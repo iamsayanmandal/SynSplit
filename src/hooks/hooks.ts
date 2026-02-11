@@ -5,10 +5,11 @@ import {
     subscribeToExpenses,
     subscribeToPoolContributions,
     subscribeToSettlements,
+    subscribeToRecurringExpenses,
     migrateUserInGroups,
 } from '../lib/firestore';
 import { calculateNetBalances, calculateDebts } from '../lib/splitCalculator';
-import type { Group, Expense, PoolContribution, Settlement, BalanceSummary, Debt } from '../types';
+import type { Group, Expense, PoolContribution, Settlement, BalanceSummary, Debt, RecurringExpense } from '../types';
 
 // ─── useGroups ───
 
@@ -131,4 +132,27 @@ export function useBalances(
         const debts = calculateDebts(balances);
         return { balances, debts };
     }, [group, expenses, contributions, settlements]);
+}
+
+// ─── useRecurringExpenses ───
+
+export function useRecurringExpenses(groupId: string | undefined) {
+    const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!groupId) {
+            setRecurringExpenses([]);
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        const unsubscribe = subscribeToRecurringExpenses(groupId, (items) => {
+            setRecurringExpenses(items);
+            setLoading(false);
+        });
+        return unsubscribe;
+    }, [groupId]);
+
+    return { recurringExpenses, loading };
 }

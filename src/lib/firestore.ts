@@ -11,7 +11,7 @@ import {
     type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Group, Expense, PoolContribution, Settlement, Member } from '../types';
+import type { Group, Expense, PoolContribution, Settlement, Member, RecurringExpense } from '../types';
 
 // ─── Groups ───
 
@@ -225,5 +225,45 @@ export function subscribeToSettlements(
         });
         settlements.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         callback(settlements);
+    });
+}
+
+// ─── Recurring Expenses ───
+
+export async function addRecurringExpense(expense: Omit<RecurringExpense, 'id'>): Promise<string> {
+    const docRef = await addDoc(collection(db, 'recurring_expenses'), {
+        ...expense,
+        createdAt: Date.now(),
+    });
+    return docRef.id;
+}
+
+export async function toggleRecurringExpense(id: string, active: boolean) {
+    await updateDoc(doc(db, 'recurring_expenses', id), { active });
+}
+
+export async function deleteRecurringExpense(id: string) {
+    await deleteDoc(doc(db, 'recurring_expenses', id));
+}
+
+export async function markRecurringAsAdded(id: string, monthKey: string) {
+    await updateDoc(doc(db, 'recurring_expenses', id), { lastAdded: monthKey });
+}
+
+export function subscribeToRecurringExpenses(
+    groupId: string,
+    callback: (items: RecurringExpense[]) => void
+): Unsubscribe {
+    const q = query(
+        collection(db, 'recurring_expenses'),
+        where('groupId', '==', groupId)
+    );
+    return onSnapshot(q, (snapshot) => {
+        const items: RecurringExpense[] = [];
+        snapshot.forEach((doc) => {
+            items.push({ id: doc.id, ...doc.data() } as RecurringExpense);
+        });
+        items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        callback(items);
     });
 }

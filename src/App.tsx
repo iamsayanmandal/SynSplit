@@ -7,6 +7,7 @@ import Expenses from './pages/Expenses';
 import AddExpense from './pages/AddExpense';
 import Profile from './pages/Profile';
 import Settle from './pages/Settle';
+import Analytics from './pages/Analytics';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -36,6 +37,7 @@ function AppRoutes() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/settle" element={<Settle />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/profile" element={<Profile />} />
           </Route>
           <Route path="/add" element={<AddExpense />} />

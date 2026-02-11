@@ -1,11 +1,12 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Home, Receipt, ArrowLeftRight, User } from 'lucide-react';
+import { Home, Receipt, ArrowLeftRight, BarChart3, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/expenses', icon: Receipt, label: 'Expenses' },
     { to: '/settle', icon: ArrowLeftRight, label: 'Settle' },
+    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/profile', icon: User, label: 'Profile' },
 ];
 

@@ -98,3 +98,21 @@ export interface BalanceSummary {
     totalUsed: number;
     netBalance: number;     // positive = gets back, negative = owes
 }
+
+export interface RecurringExpense {
+    id: string;
+    groupId: string;
+    amount: number;
+    description: string;
+    category: ExpenseCategory;
+    /** Day of month to auto-add (1-28) */
+    dayOfMonth: number;
+    /** UIDs of members who share this expense */
+    usedBy: string[];
+    createdBy: string;
+    createdAt: number;
+    /** Whether this recurring expense is active */
+    active: boolean;
+    /** Last time this was auto-added (month string like "2026-02") */
+    lastAdded?: string;
+}
