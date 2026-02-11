@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Home, Receipt, ArrowLeftRight, BarChart3, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import SynBot from './SynBot';
 
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
@@ -29,6 +30,9 @@ export default function Layout() {
                     </motion.div>
                 </AnimatePresence>
             </main>
+
+            {/* SynBot floating AI assistant */}
+            <SynBot />
 
             <nav className="fixed bottom-0 left-0 right-0 z-50">
                 <div className="bg-dark-900/80 backdrop-blur-xl border-t border-glass-border">

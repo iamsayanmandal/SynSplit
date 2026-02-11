@@ -1,12 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Calendar, Repeat, TrendingUp, TrendingDown, Plus, Trash2, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { BarChart3, Calendar, Repeat, TrendingUp, TrendingDown, Plus, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Sparkles, Loader } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses, usePoolContributions, useRecurringExpenses } from '../hooks/hooks';
 import { addRecurringExpense, deleteRecurringExpense, toggleRecurringExpense, addExpense, markRecurringAsAdded } from '../lib/firestore';
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory, SplitType } from '../types';
+import { buildExpenseContext, generatePredictions } from '../lib/gemini';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths } from 'date-fns';
 
 type Tab = 'stats' | 'calendar' | 'recurring';
@@ -32,11 +33,47 @@ export default function Analytics() {
     const [recSaving, setRecSaving] = useState(false);
     const [deletingRecurring, setDeletingRecurring] = useState<string | null>(null);
 
+    // AI Predictions state
+    const [predictions, setPredictions] = useState<string | null>(null);
+    const [predictionsLoading, setPredictionsLoading] = useState(false);
+
     const categories = Object.entries(CATEGORY_META) as [ExpenseCategory, typeof CATEGORY_META[ExpenseCategory]][];
 
     // ─── STATS ───
     const totalSpend = expenses.reduce((s, e) => s + e.amount, 0);
     const totalContributions = contributions.reduce((s, c) => s + c.amount, 0);
+
+    const handleGeneratePredictions = useCallback(async () => {
+        if (!activeGroup || expenses.length === 0) return;
+        setPredictionsLoading(true);
+        try {
+            const context = buildExpenseContext({
+                groupName: activeGroup.name,
+                mode: activeGroup.mode,
+                members: activeGroup.members.map((m) => ({ name: m.name, uid: m.uid })),
+                expenses: expenses.map((e) => ({
+                    description: e.description,
+                    amount: e.amount,
+                    category: e.category,
+                    paidBy: e.paidBy,
+                    createdAt: e.createdAt,
+                })),
+                totalSpent: totalSpend,
+                contributions: contributions.map((c) => ({
+                    userId: c.userId,
+                    amount: c.amount,
+                    createdAt: c.createdAt,
+                })),
+            });
+            const result = await generatePredictions(context);
+            setPredictions(result);
+        } catch (err) {
+            console.error('Predictions error:', err);
+            setPredictions('Unable to generate predictions right now. Please try again.');
+        } finally {
+            setPredictionsLoading(false);
+        }
+    }, [activeGroup, expenses, contributions, totalSpend]);
 
     const categoryBreakdown = useMemo(() => {
         const map: Record<string, number> = {};
@@ -307,6 +344,40 @@ export default function Analytics() {
                                                 </div>
                                             ))}
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* AI Predictions */}
+                                {expenses.length >= 3 && (
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-white mb-2.5 flex items-center gap-1.5">
+                                            <Sparkles className="w-4 h-4 text-accent-light" />
+                                            AI Insights
+                                        </h3>
+                                        {predictions ? (
+                                            <div className="glass-card p-3.5">
+                                                <p className="text-xs text-dark-200 leading-relaxed whitespace-pre-wrap">{predictions}</p>
+                                                <button onClick={handleGeneratePredictions} disabled={predictionsLoading}
+                                                    className="mt-2 text-[10px] text-accent-light hover:underline">
+                                                    {predictionsLoading ? 'Refreshing...' : 'Refresh insights'}
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button onClick={handleGeneratePredictions} disabled={predictionsLoading}
+                                                className="glass-card p-4 w-full text-center hover:bg-dark-800/60 transition-all">
+                                                {predictionsLoading ? (
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <Loader className="w-4 h-4 text-accent-light animate-spin" />
+                                                        <span className="text-xs text-dark-300">Analyzing spending patterns...</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <Sparkles className="w-4 h-4 text-accent-light" />
+                                                        <span className="text-xs text-dark-200 font-medium">Generate AI Spending Insights</span>
+                                                    </div>
+                                                )}
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </motion.div>

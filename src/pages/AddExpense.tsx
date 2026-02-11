@@ -1,11 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check } from 'lucide-react';
+import { ArrowLeft, Check, Mic, MicOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
 import { addExpense } from '../lib/firestore';
+import { parseVoiceExpense } from '../lib/gemini';
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory, SplitType, ExpenseMode } from '../types';
 
@@ -22,6 +23,46 @@ export default function AddExpense() {
     const [paidBy, setPaidBy] = useState(user?.uid || '');
     const [usedBy, setUsedBy] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
+
+    // Voice input state
+    const [isListening, setIsListening] = useState(false);
+    const [voiceParsing, setVoiceParsing] = useState(false);
+
+    const startVoice = useCallback(() => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Voice input not supported in this browser.');
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-IN';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = () => setIsListening(false);
+
+        recognition.onresult = async (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            setVoiceParsing(true);
+            try {
+                const parsed = await parseVoiceExpense(transcript);
+                if (parsed.amount) setAmount(parsed.amount.toString());
+                if (parsed.description) setDescription(parsed.description);
+                if (parsed.category && parsed.category in CATEGORY_META) {
+                    setCategory(parsed.category as ExpenseCategory);
+                }
+            } catch (err) {
+                console.error('Voice parse error:', err);
+                setDescription(transcript);
+            } finally {
+                setVoiceParsing(false);
+            }
+        };
+
+        recognition.start();
+    }, []);
 
     const selectedGroup = useMemo(() => groups.find((g) => g.id === groupId), [groups, groupId]);
 
@@ -96,8 +137,20 @@ export default function AddExpense() {
                     <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-dark-800 transition-colors">
                         <ArrowLeft className="w-5 h-5 text-dark-300" />
                     </button>
-                    <h1 className="text-xl font-bold text-white">Add Expense</h1>
+                    <h1 className="text-xl font-bold text-white flex-1">Add Expense</h1>
+                    <button onClick={startVoice} disabled={isListening || voiceParsing}
+                        className={`p-2.5 rounded-xl transition-all ${isListening ? 'bg-danger/20 text-danger-light animate-pulse'
+                                : voiceParsing ? 'bg-accent/20 text-accent-light'
+                                    : 'bg-dark-800 text-dark-300 hover:bg-dark-700'
+                            }`}>
+                        {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    </button>
                 </div>
+                {(isListening || voiceParsing) && (
+                    <p className={`text-xs mt-2 font-medium ${isListening ? 'text-danger-light animate-pulse' : 'text-accent-light'}`}>
+                        {isListening ? '🎤 Listening... speak now' : '✨ Parsing with AI...'}
+                    </p>
+                )}
             </div>
 
             {/* Form — All in one view */}
