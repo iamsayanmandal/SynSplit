@@ -217,13 +217,14 @@ export default function Expenses() {
                                 </div>
                                 <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
                                     placeholder="Description" className="input-dark text-sm" />
-                                <div className="grid grid-cols-5 gap-1.5">
+                                <div className="grid grid-cols-3 gap-1.5">
                                     {categories.map(([key, meta]) => (
                                         <button key={key} onClick={() => setEditCategory(key)}
-                                            className={`p-2 rounded-lg border text-center transition-all ${editCategory === key
-                                                ? 'border-accent bg-accent/10' : 'border-transparent bg-dark-800/50'
+                                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all ${editCategory === key
+                                                ? 'border-accent bg-accent/10 text-white' : 'border-transparent bg-dark-800/50 text-dark-400'
                                                 }`}>
-                                            <span className="text-sm">{meta.emoji}</span>
+                                            <span className="text-base">{meta.emoji}</span>
+                                            <span className="text-[11px] font-medium truncate">{meta.label}</span>
                                         </button>
                                     ))}
                                 </div>
