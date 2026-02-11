@@ -139,11 +139,12 @@ export default function AddExpense() {
                     </button>
                     <h1 className="text-xl font-bold text-white flex-1">Add Expense</h1>
                     <button onClick={startVoice} disabled={isListening || voiceParsing}
-                        className={`p-2.5 rounded-xl transition-all ${isListening ? 'bg-danger/20 text-danger-light animate-pulse'
-                                : voiceParsing ? 'bg-accent/20 text-accent-light'
-                                    : 'bg-dark-800 text-dark-300 hover:bg-dark-700'
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-medium text-sm transition-all ${isListening ? 'bg-danger/30 text-danger-light animate-pulse border border-danger/40'
+                            : voiceParsing ? 'bg-accent/20 text-accent-light border border-accent/30'
+                                : 'bg-gradient-to-r from-accent/20 to-purple-600/20 text-accent-light border border-accent/30 hover:from-accent/30 hover:to-purple-600/30'
                             }`}>
-                        {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                        <span>{isListening ? 'Stop' : voiceParsing ? 'Parsing...' : 'Voice'}</span>
                     </button>
                 </div>
                 {(isListening || voiceParsing) && (
