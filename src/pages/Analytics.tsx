@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart3, Calendar, Repeat, TrendingUp, TrendingDown, Plus, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Sparkles, Loader } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,10 +43,11 @@ export default function Analytics() {
     const totalSpend = expenses.reduce((s, e) => s + e.amount, 0);
     const totalContributions = contributions.reduce((s, c) => s + c.amount, 0);
 
-    const handleGeneratePredictions = useCallback(async () => {
+    const handleGeneratePredictions = async () => {
         if (!activeGroup || expenses.length === 0) return;
         setPredictionsLoading(true);
         try {
+            const total = expenses.reduce((s, e) => s + e.amount, 0);
             const context = buildExpenseContext({
                 groupName: activeGroup.name,
                 mode: activeGroup.mode,
@@ -58,7 +59,7 @@ export default function Analytics() {
                     paidBy: e.paidBy,
                     createdAt: e.createdAt,
                 })),
-                totalSpent: totalSpend,
+                totalSpent: total,
                 contributions: contributions.map((c) => ({
                     userId: c.userId,
                     amount: c.amount,
@@ -73,7 +74,7 @@ export default function Analytics() {
         } finally {
             setPredictionsLoading(false);
         }
-    }, [activeGroup, expenses, contributions, totalSpend]);
+    };
 
     const categoryBreakdown = useMemo(() => {
         const map: Record<string, number> = {};
