@@ -349,7 +349,7 @@ export default function Analytics() {
                                 )}
 
                                 {/* AI Predictions */}
-                                {expenses.length >= 3 && (
+                                {expenses.length >= 1 && (
                                     <div>
                                         <h3 className="text-sm font-semibold text-white mb-2.5 flex items-center gap-1.5">
                                             <Sparkles className="w-4 h-4 text-accent-light" />

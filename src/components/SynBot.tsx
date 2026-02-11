@@ -20,6 +20,7 @@ export default function SynBot() {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -27,12 +28,19 @@ export default function SynBot() {
         }
     }, [messages, open]);
 
+    // Focus input when drawer opens
+    useEffect(() => {
+        if (open && inputRef.current) {
+            setTimeout(() => inputRef.current?.focus(), 400);
+        }
+    }, [open]);
+
     // Welcome message when first opened
     useEffect(() => {
         if (open && messages.length === 0) {
             setMessages([{
                 role: 'assistant',
-                text: `Hey ${user?.displayName?.split(' ')[0] || 'there'}! 👋 I'm **SynBot** — your expense assistant.\n\nAsk me anything about your spending, like:\n- "How much did we spend on food?"\n- "Who paid the most?"\n- "What's my average daily spending?"`,
+                text: `Hey ${user?.displayName?.split(' ')[0] || 'there'}! 👋 I'm SynBot — your expense assistant.\n\nAsk me anything about your spending, like:\n• "How much did we spend on food?"\n• "Who paid the most?"\n• "What's my average daily spending?"`,
                 timestamp: Date.now(),
             }]);
         }
@@ -137,7 +145,7 @@ export default function SynBot() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 bg-black/50"
+                        className="fixed inset-0 z-[60] bg-black/50"
                         onClick={() => setOpen(false)}
                     >
                         <motion.div
@@ -146,17 +154,18 @@ export default function SynBot() {
                             exit={{ x: '100%' }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-dark-950 border-l border-glass-border flex flex-col"
+                            style={{ height: '100dvh' }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             {/* Header */}
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-glass-border">
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-glass-border flex-shrink-0">
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center">
                                         <Sparkles className="w-4 h-4 text-white" />
                                     </div>
                                     <div>
                                         <h3 className="text-sm font-bold text-white">SynBot</h3>
-                                        <p className="text-[10px] text-dark-400">AI Expense Assistant</p>
+                                        <p className="text-[10px] text-dark-400">AI Expense Assistant • Gemini 2.5 Pro</p>
                                     </div>
                                 </div>
                                 <button onClick={() => setOpen(false)}
@@ -165,8 +174,8 @@ export default function SynBot() {
                                 </button>
                             </div>
 
-                            {/* Messages */}
-                            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                            {/* Messages — takes all available space */}
+                            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
                                 {messages.map((msg, i) => (
                                     <motion.div
                                         key={i}
@@ -178,7 +187,7 @@ export default function SynBot() {
                                             ? 'bg-accent text-white rounded-br-md'
                                             : 'bg-dark-800/80 text-dark-200 rounded-bl-md border border-glass-border'
                                             }`}>
-                                            {formatMessage(msg.text)}
+                                            {msg.text}
                                         </div>
                                     </motion.div>
                                 ))}
@@ -197,9 +206,9 @@ export default function SynBot() {
 
                             {/* Quick Prompts */}
                             {messages.length <= 1 && (
-                                <div className="px-4 pb-2 flex gap-1.5 flex-wrap">
+                                <div className="px-4 pb-2 flex gap-1.5 flex-wrap flex-shrink-0">
                                     {quickPrompts.map((prompt) => (
-                                        <button key={prompt} onClick={() => { setInput(prompt.slice(2).trim()); }}
+                                        <button key={prompt} onClick={() => { setInput(prompt.slice(2).trim()); inputRef.current?.focus(); }}
                                             className="px-2.5 py-1.5 rounded-full bg-dark-800/50 border border-glass-border text-[10px] text-dark-300 font-medium hover:bg-dark-700 transition-all">
                                             {prompt}
                                         </button>
@@ -207,17 +216,19 @@ export default function SynBot() {
                                 </div>
                             )}
 
-                            {/* Input */}
-                            <div className="px-3 py-3 border-t border-glass-border">
+                            {/* Input — always visible at bottom */}
+                            <div className="px-3 py-3 border-t border-glass-border flex-shrink-0">
                                 <div className="flex items-center gap-2">
                                     <input
+                                        ref={inputRef}
                                         type="text"
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
                                         onKeyDown={handleKeyDown}
-                                        placeholder="Ask SynBot..."
+                                        placeholder="Ask SynBot anything..."
                                         className="flex-1 bg-dark-800/50 border border-glass-border rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-dark-500 focus:outline-none focus:border-accent/40"
                                         disabled={loading}
+                                        autoComplete="off"
                                     />
                                     <button
                                         onClick={handleSend}
@@ -234,11 +245,4 @@ export default function SynBot() {
             </AnimatePresence>
         </>
     );
-}
-
-/** Simple markdown-like formatting for bot messages */
-function formatMessage(text: string): string {
-    return text
-        .replace(/\*\*(.*?)\*\*/g, '𝗕$1𝗕') // We'll use CSS for bold, simplified here
-        .replace(/\*\*(.*?)\*\*/g, '$1'); // Fallback — just remove markers for now
 }

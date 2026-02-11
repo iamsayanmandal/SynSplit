@@ -1,10 +1,10 @@
 /**
  * Gemini AI API helper for SynSplit
- * Uses Google Generative AI (Gemini 2.0 Flash) for expense insights, predictions, and voice parsing
+ * Uses Google Generative AI (Gemini 2.5 Pro) for expense insights, predictions, and voice parsing
  */
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 
 interface GeminiMessage {
     role: 'user' | 'model';
