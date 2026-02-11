@@ -8,7 +8,7 @@ import { addRecurringExpense, deleteRecurringExpense, toggleRecurringExpense, ad
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory, SplitType } from '../types';
 import { buildExpenseContext, generatePredictions } from '../lib/gemini';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, subDays, startOfDay, endOfDay, isWithinInterval, getDaysInMonth, getDate } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 
 type Tab = 'stats' | 'calendar' | 'recurring';
 
@@ -157,12 +157,16 @@ export default function Analytics() {
     }, [expenses]);
 
     const avgDailySpend = useMemo(() => {
-        const now = new Date();
-        const isCurrentMonth = isSameMonth(calMonth, now);
-        // If current month, divide by days passed so far. If past/future, divide by total days in month.
-        const days = isCurrentMonth ? getDate(now) : getDaysInMonth(calMonth);
-        return days > 0 ? calMonthTotal / days : 0;
-    }, [calMonthTotal, calMonth]);
+        // Filter expenses for the currently viewed month
+        const monthlyExpenses = expenses.filter((e) => isSameMonth(new Date(e.createdAt), calMonth));
+
+        // Get unique dates that have expenses
+        const activeDays = new Set(
+            monthlyExpenses.map((e) => format(new Date(e.createdAt), 'yyyy-MM-dd'))
+        ).size;
+
+        return activeDays > 0 ? calMonthTotal / activeDays : 0;
+    }, [expenses, calMonth, calMonthTotal]);
 
     // ─── Recurring handlers ───
     const handleAddRecurring = async () => {
