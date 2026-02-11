@@ -28,6 +28,7 @@ export default function Profile() {
     const [addingPoolTo, setAddingPoolTo] = useState<string | null>(null);
     const [poolAmount, setPoolAmount] = useState('');
     const [addingPool, setAddingPool] = useState(false);
+    const [poolForMember, setPoolForMember] = useState<string>(''); // uid of member contributing
 
     // Edit name state
     const [editingNameFor, setEditingNameFor] = useState<string | null>(null);
@@ -91,7 +92,7 @@ export default function Profile() {
     };
 
     const handleAddPoolMoney = async () => {
-        if (!poolAmount || !addingPoolTo || !user) return;
+        if (!poolAmount || !addingPoolTo || !user || !poolForMember) return;
         const amount = parseFloat(poolAmount);
         if (amount <= 0) return;
         setAddingPool(true);
@@ -99,12 +100,13 @@ export default function Profile() {
             const now = new Date();
             await addPoolContribution({
                 groupId: addingPoolTo,
-                userId: user.uid,
+                userId: poolForMember, // Use selected member instead of always current user
                 amount,
                 month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
                 createdAt: Date.now(),
             });
             setPoolAmount('');
+            setPoolForMember('');
             setAddingPoolTo(null);
         } catch (err) {
             console.error('Failed to add pool money:', err);
@@ -389,20 +391,38 @@ export default function Profile() {
                             <p className="text-dark-400 text-xs mb-3">
                                 Adding money to <span className="text-white font-medium">{groups.find(g => g.id === addingPoolTo)?.name}</span>
                             </p>
+
+                            {/* Member selector — who is contributing? */}
+                            <div className="mb-4">
+                                <p className="text-xs text-dark-400 mb-2 font-medium">Who gave this money?</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {groups.find(g => g.id === addingPoolTo)?.members.map((m) => (
+                                        <button key={m.uid} onClick={() => setPoolForMember(m.uid)}
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all border ${poolForMember === m.uid
+                                                    ? 'bg-accent/20 text-accent-light border-accent/40 shadow-sm shadow-accent/10'
+                                                    : 'bg-dark-800/60 text-dark-300 border-glass-border hover:bg-dark-700'
+                                                }`}>
+                                            {m.name}
+                                            {m.uid === user?.uid && <span className="text-[10px] text-dark-500 ml-1">(You)</span>}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className="flex items-center gap-2 mb-5">
                                 <span className="text-xl text-dark-400">₹</span>
                                 <input type="number" value={poolAmount} onChange={(e) => setPoolAmount(e.target.value)}
                                     placeholder="0" inputMode="decimal" autoFocus
                                     className="bg-transparent text-2xl font-bold text-white flex-1 focus:outline-none placeholder:text-dark-700 min-w-0" />
                             </div>
-                            <button onClick={handleAddPoolMoney} disabled={!poolAmount || parseFloat(poolAmount) <= 0 || addingPool}
+                            <button onClick={handleAddPoolMoney} disabled={!poolAmount || parseFloat(poolAmount) <= 0 || !poolForMember || addingPool}
                                 className="btn-primary w-full text-sm">
                                 {addingPool ? (
                                     <span className="flex items-center justify-center gap-2">
                                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                         Adding...
                                     </span>
-                                ) : 'Add Money to Pool'}
+                                ) : poolForMember ? `Add Money for ${groups.find(g => g.id === addingPoolTo)?.members.find(m => m.uid === poolForMember)?.name || 'Member'}` : 'Select a member first'}
                             </button>
                         </motion.div>
                     </motion.div>
