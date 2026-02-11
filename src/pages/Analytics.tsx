@@ -8,7 +8,7 @@ import { addRecurringExpense, deleteRecurringExpense, toggleRecurringExpense, ad
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory, SplitType } from '../types';
 import { buildExpenseContext, generatePredictions } from '../lib/gemini';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, subDays, startOfDay, endOfDay, isWithinInterval, getDaysInMonth, getDate } from 'date-fns';
 
 type Tab = 'stats' | 'calendar' | 'recurring';
 
@@ -145,6 +145,24 @@ export default function Analytics() {
     }, [expenses, calMonth]);
 
     const maxDayExpense = Math.max(...Object.values(dayExpenseMap), 1);
+
+    // ─── Stats Headers ───
+    const last7DaysSpend = useMemo(() => {
+        const today = new Date();
+        const start = startOfDay(subDays(today, 6)); // 7 days including today
+        const end = endOfDay(today);
+        return expenses
+            .filter((e) => isWithinInterval(new Date(e.createdAt), { start, end }))
+            .reduce((sum, e) => sum + e.amount, 0);
+    }, [expenses]);
+
+    const avgDailySpend = useMemo(() => {
+        const now = new Date();
+        const isCurrentMonth = isSameMonth(calMonth, now);
+        // If current month, divide by days passed so far. If past/future, divide by total days in month.
+        const days = isCurrentMonth ? getDate(now) : getDaysInMonth(calMonth);
+        return days > 0 ? calMonthTotal / days : 0;
+    }, [calMonthTotal, calMonth]);
 
     // ─── Recurring handlers ───
     const handleAddRecurring = async () => {
@@ -403,6 +421,18 @@ export default function Analytics() {
                                     </button>
                                 </div>
 
+                                {/* Stats row — Last 7 days & Monthly Avg */}
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    <div className="glass-card p-2.5 text-center bg-dark-800/30">
+                                        <p className="text-[10px] text-dark-400 uppercase tracking-wide font-medium mb-0.5">Last 7 Days</p>
+                                        <p className="text-sm font-bold text-white">₹{last7DaysSpend.toLocaleString('en-IN')}</p>
+                                    </div>
+                                    <div className="glass-card p-2.5 text-center bg-dark-800/30">
+                                        <p className="text-[10px] text-dark-400 uppercase tracking-wide font-medium mb-0.5">Daily Avg</p>
+                                        <p className="text-sm font-bold text-white">₹{Math.round(avgDailySpend).toLocaleString('en-IN')}</p>
+                                    </div>
+                                </div>
+
                                 {/* Day labels */}
                                 <div className="grid grid-cols-7 gap-1 mb-1">
                                     {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
@@ -427,19 +457,24 @@ export default function Analytics() {
                                             <button
                                                 key={key}
                                                 onClick={() => setSelectedDay(isSelected ? null : day)}
-                                                className={`relative aspect-square rounded-lg flex flex-col items-center justify-center transition-all
+                                                className={`relative aspect-square rounded-lg flex flex-col items-center justify-start fn-sans transition-all pt-1
                                                     ${isSelected ? 'bg-accent/20 border border-accent/40' : ''}
-                                                    ${isToday && !isSelected ? 'border border-dark-600' : ''}
+                                                    ${isToday && !isSelected ? 'border border-dark-600 bg-dark-800/30' : ''}
                                                     ${!isSelected ? 'hover:bg-dark-800/50' : ''}
                                                 `}
                                             >
-                                                <span className={`text-xs ${isToday ? 'text-accent-light font-bold' : amount > 0 ? 'text-white' : 'text-dark-500'}`}>
+                                                <span className={`text-[10px] font-medium leading-none mb-1 ${isToday ? 'text-accent-light' : 'text-dark-500'}`}>
                                                     {day.getDate()}
                                                 </span>
                                                 {amount > 0 && (
-                                                    <div className="w-1.5 h-1.5 rounded-full mt-0.5"
-                                                        style={{ backgroundColor: `rgba(139, 92, 246, ${0.3 + intensity * 0.7})` }}
-                                                    />
+                                                    <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                                                        <span className={`text-[9px] font-bold leading-tight ${isSelected ? 'text-white' : 'text-white/90'}`}>
+                                                            {amount >= 1000 ? `${(amount / 1000).toFixed(1)}k` : amount}
+                                                        </span>
+                                                        <div className="w-full h-0.5 rounded-full mt-0.5 mx-auto max-w-[16px]"
+                                                            style={{ backgroundColor: `rgba(139, 92, 246, ${0.4 + intensity * 0.6})` }}
+                                                        />
+                                                    </div>
                                                 )}
                                             </button>
                                         );
