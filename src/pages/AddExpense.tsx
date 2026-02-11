@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check, Mic, MicOff } from 'lucide-react';
+import { ArrowLeft, Check, Mic, MicOff, MapPin, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
@@ -27,6 +27,30 @@ export default function AddExpense() {
     // Voice input state
     const [isListening, setIsListening] = useState(false);
     const [voiceParsing, setVoiceParsing] = useState(false);
+
+    // Location state
+    const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+    const [gettingLocation, setGettingLocation] = useState(false);
+
+    const getLocation = () => {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return;
+        }
+        setGettingLocation(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                setGettingLocation(false);
+            },
+            (err) => {
+                console.error('Location error:', err);
+                alert('Could not get your location. Please enable location access.');
+                setGettingLocation(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
 
     const startVoice = useCallback(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -111,6 +135,7 @@ export default function AddExpense() {
                 paidBy: mode === 'pool' ? 'pool' : paidBy,
                 usedBy,
                 splitType: 'equal' as SplitType,
+                ...(location ? { location } : {}),
                 createdAt: Date.now(),
                 createdBy: user.uid,
             });
@@ -193,9 +218,27 @@ export default function AddExpense() {
                             type="text"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            placeholder="What's this for? e.g. Dinner, Groceries"
+                            placeholder="Description (optional)"
                             className="input-dark text-sm"
                         />
+
+                        {/* Location (optional) */}
+                        {!location ? (
+                            <button onClick={getLocation} disabled={gettingLocation} type="button"
+                                className="flex items-center gap-2 text-xs text-dark-400 hover:text-accent-light transition-colors py-1">
+                                <MapPin className="w-3.5 h-3.5" />
+                                {gettingLocation ? 'Getting location...' : '📍 Add Location (optional)'}
+                            </button>
+                        ) : (
+                            <div className="flex items-center gap-2 py-1">
+                                <MapPin className="w-3.5 h-3.5 text-green-400" />
+                                <span className="text-xs text-green-400 flex-1">📍 Location saved</span>
+                                <button onClick={() => setLocation(null)} type="button"
+                                    className="p-0.5 rounded hover:bg-dark-700 transition-colors">
+                                    <X className="w-3 h-3 text-dark-400" />
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Row 2: Group + Category */}

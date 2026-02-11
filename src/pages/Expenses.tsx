@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, Check, Search, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, Search, AlertTriangle, MapPin } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses } from '../hooks/hooks';
@@ -178,6 +178,14 @@ export default function Expenses() {
                                         )}
                                     </div>
                                     <div className="flex items-center gap-0.5">
+                                        {exp.location && (
+                                            <a href={`https://www.google.com/maps?q=${exp.location.lat},${exp.location.lng}`}
+                                                target="_blank" rel="noopener noreferrer"
+                                                className="p-1 rounded-lg text-green-500 hover:text-green-400 hover:bg-green-500/10 transition-all"
+                                                title="Open in Google Maps">
+                                                <MapPin className="w-3 h-3" />
+                                            </a>
+                                        )}
                                         {isEditable && (
                                             <button onClick={() => openEdit(exp)}
                                                 className="p-1 rounded-lg text-dark-500 hover:text-accent-light hover:bg-accent/10 transition-all">
@@ -216,7 +224,7 @@ export default function Expenses() {
                                         className="bg-transparent text-2xl font-bold text-white flex-1 focus:outline-none min-w-0" autoFocus inputMode="decimal" />
                                 </div>
                                 <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
-                                    placeholder="Description" className="input-dark text-sm" />
+                                    placeholder="Description (optional)" className="input-dark text-sm" />
                                 <div className="grid grid-cols-3 gap-1.5">
                                     {categories.map(([key, meta]) => (
                                         <button key={key} onClick={() => setEditCategory(key)}
@@ -228,6 +236,15 @@ export default function Expenses() {
                                         </button>
                                     ))}
                                 </div>
+                                {/* Location — read only */}
+                                {editingExpense?.location && (
+                                    <a href={`https://www.google.com/maps?q=${editingExpense.location.lat},${editingExpense.location.lng}`}
+                                        target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center gap-2 text-xs text-green-400 hover:text-green-300 transition-colors py-1">
+                                        <MapPin className="w-3.5 h-3.5" />
+                                        📍 View Location on Google Maps
+                                    </a>
+                                )}
                             </div>
                             <div className="flex gap-3">
                                 <button onClick={() => setEditingExpense(null)} className="btn-ghost flex-1 text-sm">Cancel</button>

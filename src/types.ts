@@ -60,6 +60,8 @@ export interface Expense {
     splitType: SplitType;
     /** Custom split data — keys are uid, values depend on splitType */
     splitDetails?: Record<string, number>;
+    /** Optional GPS coordinates captured at time of expense */
+    location?: { lat: number; lng: number };
     createdAt: number;
     createdBy: string;
     editedAt?: number;
