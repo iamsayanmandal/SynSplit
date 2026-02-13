@@ -8,6 +8,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { deleteGroup, addMemberToGroup, addPoolContribution, updateGroupName, removeMemberFromGroup, toggleAllowMemberExpenses } from '../lib/firestore';
 import CreateGroup from '../components/CreateGroup';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type { Member } from '../types';
 
 export default function Profile() {
@@ -34,29 +35,81 @@ export default function Profile() {
     const [editingNameFor, setEditingNameFor] = useState<string | null>(null);
     const [editNameValue, setEditNameValue] = useState('');
 
+    // Confirmation Dialog State
+    const [confirmDialog, setConfirmDialog] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        confirmText: string;
+        type: 'danger' | 'warning' | 'info';
+        onConfirm: () => Promise<void>;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmText: '',
+        type: 'danger',
+        onConfirm: async () => { },
+    });
+    const [confirmLoading, setConfirmLoading] = useState(false);
+
     const isAdmin = (groupCreatedBy: string) => groupCreatedBy === user?.uid;
 
     const handleSignOut = async () => {
-        await signOut(auth);
-    };
-
-    const handleDelete = async (groupId: string) => {
-        if (window.confirm('Delete this group and all its data?')) {
-            await deleteGroup(groupId);
-            if (activeGroupId === groupId) {
-                const remaining = groups.filter((g) => g.id !== groupId);
-                setActiveGroupId(remaining.length > 0 ? remaining[0].id : null);
-            }
+        try {
+            await signOut(auth);
+        } catch (error) {
+            console.error('Error signing out:', error);
         }
     };
 
-    const handleRemoveMember = async (groupId: string, memberUid: string, memberName: string) => {
-        if (window.confirm(`Remove ${memberName} from this group?`)) {
-            const group = groups.find((g) => g.id === groupId);
-            if (group) {
-                await removeMemberFromGroup(groupId, memberUid, group.members);
+    const handleDelete = (groupId: string) => {
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Delete Group',
+            message: 'Are you sure you want to delete this group? This action cannot be undone and all data will be lost.',
+            confirmText: 'Delete Group',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmLoading(true);
+                try {
+                    await deleteGroup(groupId);
+                    if (activeGroupId === groupId) {
+                        const remaining = groups.filter((g) => g.id !== groupId);
+                        setActiveGroupId(remaining.length > 0 ? remaining[0].id : null);
+                    }
+                    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                } catch (error) {
+                    console.error('Failed to delete group:', error);
+                } finally {
+                    setConfirmLoading(false);
+                }
             }
-        }
+        });
+    };
+
+    const handleRemoveMember = (groupId: string, memberUid: string, memberName: string) => {
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Remove Member',
+            message: `Are you sure you want to remove ${memberName} from this group?`,
+            confirmText: 'Remove',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmLoading(true);
+                try {
+                    const group = groups.find((g) => g.id === groupId);
+                    if (group) {
+                        await removeMemberFromGroup(groupId, memberUid, group.members);
+                    }
+                    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                } catch (error) {
+                    console.error('Failed to remove member:', error);
+                } finally {
+                    setConfirmLoading(false);
+                }
+            }
+        });
     };
 
     const handleSaveName = async (groupId: string) => {
@@ -334,6 +387,18 @@ export default function Profile() {
             {/* Create Group Modal */}
             <CreateGroup open={showCreate} onClose={() => setShowCreate(false)} />
 
+            {/* Confirm Dialog */}
+            <ConfirmDialog
+                isOpen={confirmDialog.isOpen}
+                onClose={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirmDialog.onConfirm}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                confirmText={confirmDialog.confirmText}
+                type={confirmDialog.type}
+                isLoading={confirmLoading}
+            />
+
             {/* Add Member Modal */}
             <AnimatePresence>
                 {addingMemberTo && (
@@ -399,8 +464,8 @@ export default function Profile() {
                                     {groups.find(g => g.id === addingPoolTo)?.members.map((m) => (
                                         <button key={m.uid} onClick={() => setPoolForMember(m.uid)}
                                             className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all border ${poolForMember === m.uid
-                                                    ? 'bg-accent/20 text-accent-light border-accent/40 shadow-sm shadow-accent/10'
-                                                    : 'bg-dark-800/60 text-dark-300 border-glass-border hover:bg-dark-700'
+                                                ? 'bg-accent/20 text-accent-light border-accent/40 shadow-sm shadow-accent/10'
+                                                : 'bg-dark-800/60 text-dark-300 border-glass-border hover:bg-dark-700'
                                                 }`}>
                                             {m.name}
                                             {m.uid === user?.uid && <span className="text-[10px] text-dark-500 ml-1">(You)</span>}
