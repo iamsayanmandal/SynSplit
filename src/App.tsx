@@ -10,6 +10,8 @@ import Profile from './pages/Profile';
 import Settle from './pages/Settle';
 import Analytics from './pages/Analytics';
 import { requestPermissionAndSaveToken } from './lib/messaging';
+import { onMessage } from 'firebase/messaging';
+import { messaging } from './firebase';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -19,6 +21,27 @@ function AppRoutes() {
       requestPermissionAndSaveToken(user.uid);
     }
   }, [user]);
+
+  useEffect(() => {
+    // Listen for foreground messages
+    if (messaging) {
+      const unsubscribe = onMessage(messaging, (payload) => {
+        console.log('[Foreground] Message received: ', payload);
+        const { title, body } = payload.notification || {};
+
+        if (title) {
+          // Use the browser's Notification API if permission granted
+          if (Notification.permission === "granted") {
+            new Notification(title, { body, icon: '/icon.svg' });
+          } else {
+            // Fallback to alert (simple for testing)
+            alert(`${title}\n${body}`);
+          }
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, []);
 
   if (loading) {
     return (
