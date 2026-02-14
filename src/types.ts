@@ -118,3 +118,15 @@ export interface RecurringExpense {
     /** Last time this was auto-added (month string like "2026-02") */
     lastAdded?: string;
 }
+
+export interface Notification {
+    id: string;
+    userId: string;
+    groupId?: string;
+    title: string;
+    message: string;
+    type: 'expense' | 'settlement' | 'info' | 'warning';
+    read: boolean;
+    createdAt: number;
+    link?: string;
+}

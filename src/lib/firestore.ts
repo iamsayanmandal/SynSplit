@@ -8,10 +8,90 @@ import {
     orderBy,
     where,
     onSnapshot,
+    getDoc,
     type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Group, Expense, PoolContribution, Settlement, Member, RecurringExpense } from '../types';
+import type { Group, Expense, PoolContribution, Settlement, Member, RecurringExpense, Notification } from '../types';
+
+// ─── Notifications ───
+
+// Kept for backward compatibility or if we want an in-app history later
+export async function addNotification(userId: string, notification: Omit<Notification, 'id' | 'userId'>) {
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            userId,
+            ...notification,
+            read: false,
+            createdAt: Date.now(),
+        });
+    } catch (error) {
+        console.error('Error adding notification:', error);
+    }
+}
+
+export async function markNotificationRead(notificationId: string) {
+    await updateDoc(doc(db, 'notifications', notificationId), { read: true });
+}
+
+export async function markAllNotificationsRead(userId: string) {
+    // No-op for now
+}
+
+export function subscribeToNotifications(
+    userId: string,
+    callback: (notifications: Notification[]) => void
+): Unsubscribe {
+    const q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+        const items: Notification[] = [];
+        snapshot.forEach((doc) => {
+            items.push({ id: doc.id, ...doc.data() } as Notification);
+        });
+        callback(items);
+    });
+}
+
+/**
+ * Helper to notify all members of a group except the sender
+ * This currently just adds to the in-app notification history.
+ * Push notifications are handled by Cloud Functions triggers on the 'expenses' collection.
+ */
+export async function notifyGroupMembers(
+    groupId: string,
+    title: string,
+    message: string,
+    type: Notification['type'],
+    excludeUserId?: string
+) {
+    try {
+        const groupDoc = await getDoc(doc(db, 'groups', groupId));
+        if (!groupDoc.exists()) return;
+        const group = groupDoc.data() as Group;
+
+        const promises = group.members
+            .filter((m) => m.uid !== excludeUserId)
+            .map((m) =>
+                addNotification(m.uid, {
+                    groupId,
+                    title,
+                    message,
+                    type,
+                    read: false,
+                    createdAt: Date.now(),
+                })
+            );
+
+        await Promise.all(promises);
+    } catch (err) {
+        console.error('Failed to save notification history:', err);
+    }
+}
+
 
 // ─── Groups ───
 
@@ -134,6 +214,16 @@ export async function addExpense(expense: Omit<Expense, 'id'>): Promise<string> 
         createdAt: Date.now(),
     });
     await updateDoc(doc(db, 'groups', expense.groupId), { updatedAt: Date.now() });
+
+    // Notify group members (in-app history)
+    await notifyGroupMembers(
+        expense.groupId,
+        'New Expense',
+        `${expense.description} - ₹${expense.amount}`,
+        'expense',
+        expense.paidBy
+    );
+
     return docRef.id;
 }
 
@@ -179,6 +269,16 @@ export async function addPoolContribution(contribution: Omit<PoolContribution, '
         ...contribution,
         createdAt: Date.now(),
     });
+
+    // Notify group members
+    await notifyGroupMembers(
+        contribution.groupId,
+        'Pool Contribution',
+        `New contribution of ₹${contribution.amount}`,
+        'info',
+        contribution.userId
+    );
+
     return docRef.id;
 }
 
@@ -207,6 +307,16 @@ export async function addSettlement(settlement: Omit<Settlement, 'id'>): Promise
         ...settlement,
         createdAt: Date.now(),
     });
+
+    // Notify
+    await notifyGroupMembers(
+        settlement.groupId,
+        'Settlement',
+        `Settlement payment of ₹${settlement.amount}`,
+        'settlement',
+        settlement.fromUser
+    );
+
     return docRef.id;
 }
 

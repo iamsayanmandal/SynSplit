@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
@@ -8,9 +9,16 @@ import AddExpense from './pages/AddExpense';
 import Profile from './pages/Profile';
 import Settle from './pages/Settle';
 import Analytics from './pages/Analytics';
+import { requestPermissionAndSaveToken } from './lib/messaging';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      requestPermissionAndSaveToken(user.uid);
+    }
+  }, [user]);
 
   if (loading) {
     return (
