@@ -1,21 +1,35 @@
-const fs = require('fs');
-const path = require('path');
+import { readFileSync, writeFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const envPath = path.resolve(__dirname, '../.env');
-const templatePath = path.resolve(__dirname, 'sw-template.js');
-const outputPath = path.resolve(__dirname, '../public/firebase-messaging-sw.js');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const envPath = resolve(__dirname, '../.env');
+const templatePath = resolve(__dirname, 'sw-template.js');
+const outputPath = resolve(__dirname, '../public/firebase-messaging-sw.js');
 
 // Simple .env parser
-const envContent = fs.readFileSync(envPath, 'utf8');
-const envVars = {};
-envContent.split('\n').forEach(line => {
-    const [key, value] = line.split('=');
-    if (key && value) {
-        envVars[key.trim()] = value.trim().replace(/['"]/g, ''); // Remove quotes if any
+let envVars = {};
+if (process.env.VITE_FIREBASE_API_KEY) {
+    // If running in environment where vars are already set (e.g. CI/CD)
+    envVars = process.env;
+} else {
+    try {
+        const envContent = readFileSync(envPath, 'utf8');
+        envContent.split('\n').forEach(line => {
+            const [key, value] = line.split('=');
+            if (key && value) {
+                envVars[key.trim()] = value.trim().replace(/['"]/g, ''); // Remove quotes if any
+            }
+        });
+    } catch (e) {
+        console.warn('No .env file found, relying on process.env');
+        envVars = process.env;
     }
-});
+}
 
-let template = fs.readFileSync(templatePath, 'utf8');
+let template = readFileSync(templatePath, 'utf8');
 
 // Replace placeholders
 const keys = [
@@ -37,5 +51,5 @@ keys.forEach(key => {
     }
 });
 
-fs.writeFileSync(outputPath, template);
+writeFileSync(outputPath, template);
 console.log('Generated public/firebase-messaging-sw.js from template');
