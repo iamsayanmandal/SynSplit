@@ -21,3 +21,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Generated Service Worker
+public/firebase-messaging-sw.js
