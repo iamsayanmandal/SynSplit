@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
     subscribeToGroups,
@@ -6,7 +6,6 @@ import {
     subscribeToPoolContributions,
     subscribeToSettlements,
     subscribeToRecurringExpenses,
-    migrateUserInGroups,
 } from '../lib/firestore';
 import { calculateNetBalances, calculateDebts } from '../lib/splitCalculator';
 import type { Group, Expense, PoolContribution, Settlement, BalanceSummary, Debt, RecurringExpense } from '../types';
@@ -17,27 +16,14 @@ export function useGroups() {
     const { user } = useAuth();
     const [groups, setGroups] = useState<Group[]>([]);
     const [loading, setLoading] = useState(true);
-    const migratedRef = useRef(false);
 
     useEffect(() => {
         if (!user) {
             setGroups([]);
             setLoading(false);
-            migratedRef.current = false;
             return;
         }
         setLoading(true);
-
-        // One-time migration: update pre-added member records with real Firebase UID
-        if (!migratedRef.current) {
-            migratedRef.current = true;
-            migrateUserInGroups({
-                uid: user.uid,
-                email: user.email || '',
-                displayName: user.displayName || '',
-                photoURL: user.photoURL || undefined,
-            });
-        }
 
         const unsubscribe = subscribeToGroups(user.uid, user.email || '', (groups) => {
             setGroups(groups);

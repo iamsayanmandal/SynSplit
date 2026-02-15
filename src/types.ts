@@ -38,6 +38,8 @@ export interface Group {
     id: string;
     name: string;
     members: Member[];
+    /** Array of UIDs for security rules (faster lookup) */
+    memberUids: string[];
     createdBy: string;
     createdAt: number;
     updatedAt: number;
@@ -66,6 +68,9 @@ export interface Expense {
     createdBy: string;
     editedAt?: number;
     editedBy?: string;
+    /** Snapshot of payer details at time of expense (for removed members) */
+    payerName?: string;
+    payerPhoto?: string;
 }
 
 export interface PoolContribution {

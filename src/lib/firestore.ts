@@ -34,7 +34,7 @@ export async function markNotificationRead(notificationId: string) {
     await updateDoc(doc(db, 'notifications', notificationId), { read: true });
 }
 
-export async function markAllNotificationsRead(userId: string) {
+export async function markAllNotificationsRead(_userId: string) {
     // No-op for now
 }
 
@@ -104,6 +104,7 @@ export async function createGroup(
         name,
         mode,
         members: [creator],
+        memberUids: [creator.uid],
         createdBy: creator.uid,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -118,8 +119,14 @@ export async function deleteGroup(groupId: string) {
 export async function addMemberToGroup(groupId: string, member: Member, currentMembers: Member[]) {
     // Check duplicate by email OR uid
     if (currentMembers.find((m) => m.email === member.email || m.uid === member.uid)) return;
+
+    // Maintain memberUids for security rules
+    const newMembers = [...currentMembers, member];
+    const newMemberUids = newMembers.map(m => m.uid);
+
     await updateDoc(doc(db, 'groups', groupId), {
-        members: [...currentMembers, member],
+        members: newMembers,
+        memberUids: newMemberUids,
         updatedAt: Date.now(),
     });
 }
@@ -130,7 +137,13 @@ export async function updateGroupName(groupId: string, name: string) {
 
 export async function removeMemberFromGroup(groupId: string, memberUid: string, currentMembers: Member[]) {
     const updated = currentMembers.filter((m) => m.uid !== memberUid);
-    await updateDoc(doc(db, 'groups', groupId), { members: updated, updatedAt: Date.now() });
+    const updatedUids = updated.map(m => m.uid);
+
+    await updateDoc(doc(db, 'groups', groupId), {
+        members: updated,
+        memberUids: updatedUids,
+        updatedAt: Date.now()
+    });
 }
 
 export async function toggleAllowMemberExpenses(groupId: string, allow: boolean) {
@@ -139,78 +152,74 @@ export async function toggleAllowMemberExpenses(groupId: string, allow: boolean)
 
 /**
  * Subscribe to groups where the user is a member.
- * Matches by uid OR email (handles pre-added members who haven't logged in yet).
- * When a match is found by email but uid differs, auto-migrates the member record.
+ * Optimized: Uses 'memberUids' for efficient server-side filtering.
  */
 export function subscribeToGroups(
     uid: string,
-    email: string,
+    _email: string, // _email is kept for backward compatibility but not used in filtering
     callback: (groups: Group[]) => void
 ): Unsubscribe {
-    const q = query(collection(db, 'groups'), orderBy('updatedAt', 'desc'));
+    // SECURITY & PERFORMANCE: Only fetch groups where I am a member.
+    // This matches the strict firestore.rule.
+    const q = query(
+        collection(db, 'groups'),
+        where('memberUids', 'array-contains', uid),
+        orderBy('updatedAt', 'desc')
+    );
+
     return onSnapshot(q, (snapshot) => {
         const groups: Group[] = [];
         snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            const members: Member[] = data.members || [];
-            const isMember = members.some(
-                (m) => m.uid === uid || (m.email && m.email.toLowerCase() === email.toLowerCase())
-            );
-            if (isMember) {
-                groups.push({ id: docSnap.id, ...data } as Group);
-            }
+            groups.push({ id: docSnap.id, ...docSnap.data() } as Group);
         });
         callback(groups);
     });
 }
 
+// ─── Expenses ───
+
 /**
- * When user logs in, update their member records in all groups to use their real Firebase UID.
- * This handles the case where admin added them by email before they signed up.
+ * Fetch a user's basic profile (name, photo) by UID.
+ * Useful for resolving names of members who have left the group.
  */
-export async function migrateUserInGroups(user: { uid: string; email: string; displayName: string; photoURL?: string }) {
-    const q = query(collection(db, 'groups'), orderBy('updatedAt', 'desc'));
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-        for (const docSnap of snapshot.docs) {
-            const data = docSnap.data();
-            const members: Member[] = data.members || [];
-            let needsUpdate = false;
-            const updatedMembers = members.map((m) => {
-                // Match by email but UID doesn't match — needs migration
-                if (m.email && m.email.toLowerCase() === user.email.toLowerCase() && m.uid !== user.uid) {
-                    needsUpdate = true;
-                    return {
-                        ...m,
-                        uid: user.uid,
-                        name: user.displayName || m.name,
-                        photoURL: user.photoURL || m.photoURL,
-                    };
-                }
-                // Match by UID — update name/photo if changed
-                if (m.uid === user.uid && (!m.photoURL || m.name !== user.displayName)) {
-                    needsUpdate = true;
-                    return {
-                        ...m,
-                        name: user.displayName || m.name,
-                        photoURL: user.photoURL || m.photoURL,
-                    };
-                }
-                return m;
-            });
-            if (needsUpdate) {
-                await updateDoc(doc(db, 'groups', docSnap.id), { members: updatedMembers });
-            }
+export async function getUserProfile(uid: string): Promise<Partial<Member> | null> {
+    try {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+            const data = userDoc.data();
+            return {
+                uid,
+                name: data.displayName || 'Unknown',
+                photoURL: data.photoURL,
+                email: data.email || ''
+            };
         }
-        // One-time migration — unsubscribe after processing
-        unsubscribe();
-    });
+        return null;
+    } catch (err) {
+        console.error('Error fetching user profile:', err);
+        return null;
+    }
 }
 
 // ─── Expenses ───
 
 export async function addExpense(expense: Omit<Expense, 'id'>): Promise<string> {
+    // Snapshot payer details if not provided
+    let payerName = expense.payerName;
+    let payerPhoto = expense.payerPhoto;
+
+    if (!payerName && expense.paidBy !== 'pool') {
+        const profile = await getUserProfile(expense.paidBy);
+        if (profile) {
+            payerName = profile.name;
+            payerPhoto = profile.photoURL;
+        }
+    }
+
     const docRef = await addDoc(collection(db, 'expenses'), {
         ...expense,
+        payerName: payerName || null,
+        payerPhoto: payerPhoto || null,
         createdAt: Date.now(),
     });
     await updateDoc(doc(db, 'groups', expense.groupId), { updatedAt: Date.now() });

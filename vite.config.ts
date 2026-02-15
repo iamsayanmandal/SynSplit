@@ -29,6 +29,18 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/messaging'],
+          'vendor-ui': ['framer-motion', 'lucide-react', 'date-fns', 'jspdf', 'jspdf-autotable']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000,
+  },
   optimizeDeps: {
     exclude: ['lucide-react'],
   },

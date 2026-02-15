@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, Check, Search, AlertTriangle, MapPin } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, Search, AlertTriangle, MapPin, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses } from '../hooks/hooks';
-import { deleteExpense, updateExpense } from '../lib/firestore';
+import { deleteExpense, updateExpense, getUserProfile } from '../lib/firestore';
+import { exportGroupExpenses } from '../lib/pdfExport';
 import { CATEGORY_META } from '../types';
-import type { ExpenseCategory, Expense } from '../types';
+import type { ExpenseCategory, Expense, Member } from '../types';
 import { format, formatDistanceToNow } from 'date-fns';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1000;
 
@@ -29,6 +31,41 @@ export default function Expenses() {
     const [editSaving, setEditSaving] = useState(false);
     const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
 
+    // Resolved users for removed members
+    const [resolvedUsers, setResolvedUsers] = useState<Record<string, Partial<Member>>>({});
+
+    // Identify and fetch unknown users
+    useEffect(() => {
+        if (!activeGroup || expenses.length === 0) return;
+
+        const currentMemberIds = new Set(activeGroup.members.map(m => m.uid));
+        const unknownUids = new Set<string>();
+
+        expenses.forEach(exp => {
+            if (exp.paidBy !== 'pool' && !currentMemberIds.has(exp.paidBy) && !resolvedUsers[exp.paidBy]) {
+                unknownUids.add(exp.paidBy);
+            }
+        });
+
+        if (unknownUids.size > 0) {
+            const fetchProfiles = async () => {
+                const newResolved: Record<string, Partial<Member>> = {};
+                await Promise.all(Array.from(unknownUids).map(async (uid) => {
+                    const profile = await getUserProfile(uid);
+                    if (profile) {
+                        newResolved[uid] = profile;
+                    } else {
+                        newResolved[uid] = { name: 'Former Member', uid }; // Fallback if user deleted
+                    }
+                }));
+
+                setResolvedUsers(prev => ({ ...prev, ...newResolved }));
+            };
+            fetchProfiles();
+        }
+    }, [expenses, activeGroup, resolvedUsers]);
+
+
     const filtered = search.trim()
         ? expenses.filter((e) =>
             e.description.toLowerCase().includes(search.toLowerCase()) ||
@@ -36,13 +73,38 @@ export default function Expenses() {
         )
         : expenses;
 
-    const getMemberName = (uid: string) => {
-        if (uid === 'pool') return '💰 Pool';
-        return activeGroup?.members.find((m) => m.uid === uid)?.name || uid;
+    const handleExport = () => {
+        if (!activeGroup || expenses.length === 0) return;
+        exportGroupExpenses(activeGroup.name, expenses, activeGroup.members);
     };
 
-    const getMemberPhoto = (uid: string) => {
-        return activeGroup?.members.find((m) => m.uid === uid)?.photoURL;
+    const getMemberName = (uid: string, expense?: Expense) => {
+        if (uid === 'pool') return '💰 Pool';
+        // 1. Current Member
+        const member = activeGroup?.members.find((m) => m.uid === uid);
+        if (member) return member.name;
+
+        // 2. Resolved (Lazy Fetched)
+        if (resolvedUsers[uid]) return resolvedUsers[uid].name || 'Unknown';
+
+        // 3. Snapshot (Future proofing)
+        if (expense?.payerName) return expense.payerName;
+
+        return 'Unknown';
+    };
+
+    const getMemberPhoto = (uid: string, expense?: Expense) => {
+        // 1. Current Member
+        const member = activeGroup?.members.find((m) => m.uid === uid);
+        if (member) return member.photoURL;
+
+        // 2. Resolved (Lazy Fetched)
+        if (resolvedUsers[uid]) return resolvedUsers[uid].photoURL;
+
+        // 3. Snapshot
+        if (expense?.payerPhoto) return expense.payerPhoto;
+
+        return undefined;
     };
 
     const canEdit = (exp: Expense) => {
@@ -94,10 +156,19 @@ export default function Expenses() {
                         {activeGroup ? `${activeGroup.name} · ₹${total.toLocaleString('en-IN')} total` : 'No group selected'}
                     </p>
                 </div>
-                <button onClick={() => navigate('/add')}
-                    className="p-2.5 rounded-xl bg-gradient-to-br from-accent to-purple-600 text-white shadow-neon">
-                    <Plus className="w-5 h-5" />
-                </button>
+                <div className="flex gap-2">
+                    {expenses.length > 0 && (
+                        <button onClick={handleExport}
+                            className="p-2.5 rounded-xl bg-dark-800 text-dark-200 hover:text-white hover:bg-dark-700 transition-colors"
+                            title="Export PDF">
+                            <Download className="w-5 h-5" />
+                        </button>
+                    )}
+                    <button onClick={() => navigate('/add')}
+                        className="p-2.5 rounded-xl bg-gradient-to-br from-accent to-purple-600 text-white shadow-neon">
+                        <Plus className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
 
             {/* Search */}
@@ -130,8 +201,9 @@ export default function Expenses() {
                 <div className="space-y-2">
                     {filtered.map((exp, i) => {
                         const cat = CATEGORY_META[exp.category as ExpenseCategory] || CATEGORY_META.others;
-                        const creatorPhoto = getMemberPhoto(exp.createdBy);
-                        const creatorName = getMemberName(exp.createdBy);
+                        const creatorPhoto = getMemberPhoto(exp.createdBy, exp);
+                        const creatorName = getMemberName(exp.createdBy, exp);
+                        const payerName = getMemberName(exp.paidBy, exp);
                         const isEditable = canEdit(exp);
                         const wasEdited = !!exp.editedAt;
 
@@ -152,7 +224,7 @@ export default function Expenses() {
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-medium text-white truncate">{exp.description}</p>
                                         <p className="text-[11px] text-dark-400 mt-0.5">
-                                            {exp.paidBy === 'pool' ? '💰 Pool' : `${getMemberName(exp.paidBy)}`} · {format(new Date(exp.createdAt), 'dd MMM')}
+                                            {exp.paidBy === 'pool' ? '💰 Pool' : `${payerName}`} · {format(new Date(exp.createdAt), 'dd MMM')}
                                         </p>
                                     </div>
                                     <p className="text-sm font-bold text-white flex-shrink-0">₹{exp.amount.toLocaleString('en-IN')}</p>
@@ -262,39 +334,15 @@ export default function Expenses() {
                 )}
             </AnimatePresence>
 
-            {/* Delete Confirmation Modal */}
-            <AnimatePresence>
-                {deletingExpense && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
-                        onClick={() => setDeletingExpense(null)}>
-                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="glass-card p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center flex-shrink-0">
-                                    <AlertTriangle className="w-5 h-5 text-danger-light" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-white">Delete Expense?</h3>
-                                    <p className="text-dark-400 text-xs">This cannot be undone</p>
-                                </div>
-                            </div>
-                            <div className="glass-card p-3 mb-5 border border-danger/10">
-                                <p className="text-sm text-white font-medium">{deletingExpense.description}</p>
-                                <p className="text-lg font-bold text-danger-light">₹{deletingExpense.amount.toLocaleString('en-IN')}</p>
-                            </div>
-                            <div className="flex gap-3">
-                                <button onClick={() => setDeletingExpense(null)} className="btn-ghost flex-1 text-sm">Cancel</button>
-                                <button onClick={handleConfirmDelete}
-                                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 text-white text-sm font-semibold hover:shadow-danger/20 transition-all active:scale-95">
-                                    Delete
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <ConfirmDialog
+                isOpen={!!deletingExpense}
+                onClose={() => setDeletingExpense(null)}
+                onConfirm={handleConfirmDelete}
+                title="Delete Expense?"
+                message={`Are you sure you want to delete "${deletingExpense?.description}"? This cannot be undone.`}
+                confirmText="Delete"
+                type="danger"
+            />
         </div>
     );
 }

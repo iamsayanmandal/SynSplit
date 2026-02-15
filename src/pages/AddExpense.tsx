@@ -53,6 +53,7 @@ export default function AddExpense() {
     };
 
     const startVoice = useCallback(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognition) {
             alert('Voice input not supported in this browser.');
@@ -67,6 +68,7 @@ export default function AddExpense() {
         recognition.onend = () => setIsListening(false);
         recognition.onerror = () => setIsListening(false);
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onresult = async (event: any) => {
             const transcript = event.results[0][0].transcript;
             setVoiceParsing(true);

@@ -5,9 +5,28 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+// ─── Interfaces ───
+
+interface ExpenseData {
+    amount: number;
+    description: string;
+    groupId: string;
+    paidBy: string;
+    usedBy: string[];
+    splitType: string;
+    splitDetails?: Record<string, number>;
+}
+
+interface SettlementData {
+    fromUser: string;
+    toUser: string;
+    amount: number;
+    groupId?: string;
+}
+
 // ─── Helpers ───
 
-function calculateShare(expense: any, userId: string): number {
+function calculateShare(expense: ExpenseData, userId: string): number {
     const { amount, splitType, splitDetails, usedBy } = expense;
 
     if (!usedBy.includes(userId)) return 0;
@@ -16,14 +35,16 @@ function calculateShare(expense: any, userId: string): number {
         case 'equal':
             return amount / usedBy.length;
         case 'unequal':
-            return splitDetails?.[userId] || 0;
+            return (splitDetails && splitDetails[userId]) ? splitDetails[userId] : 0;
         case 'percentage':
-            return (amount * (splitDetails?.[userId] || 0)) / 100;
-        case 'share':
+            return (amount * ((splitDetails && splitDetails[userId]) ? splitDetails[userId] : 0)) / 100;
+        case 'share': {
             // Sum total shares
-            const totalShares = Object.values(splitDetails || {}).reduce((a: any, b: any) => a + b, 0) as number;
-            const userShare = splitDetails?.[userId] || 0;
+            const details = splitDetails || {};
+            const totalShares = Object.values(details).reduce((a: number, b: number) => a + b, 0);
+            const userShare = details[userId] || 0;
             return totalShares ? (amount * userShare) / totalShares : 0;
+        }
         default:
             return 0;
     }
@@ -51,7 +72,7 @@ async function getUserName(uid: string, groupId?: string): Promise<string> {
         const groupDoc = await db.collection('groups').doc(groupId).get();
         if (groupDoc.exists) {
             const members = groupDoc.data()?.members || [];
-            const member = members.find((m: any) => m.uid === uid);
+            const member = members.find((m: { uid: string; name: string }) => m.uid === uid);
             if (member && member.name) {
                 return member.name;
             }
@@ -63,7 +84,7 @@ async function getUserName(uid: string, groupId?: string): Promise<string> {
 
 // ─── Notification Logic ───
 
-async function sendExpenseNotification(expense: any) {
+async function sendExpenseNotification(expense: ExpenseData) {
     console.log(`[DEBUG] Processing Expense: ${expense.description} (${expense.amount})`);
 
     const { paidBy, usedBy } = expense;
@@ -72,7 +93,7 @@ async function sendExpenseNotification(expense: any) {
     const payerName = await getUserName(paidBy, expense.groupId);
 
     // 2. Identify Recipients (Participants excluding Payer)
-    const recipients = (usedBy as string[]).filter(uid => uid !== paidBy);
+    const recipients = usedBy.filter(uid => uid !== paidBy);
 
     if (recipients.length === 0) {
         console.log('[DEBUG] No recipients to notify (payer is only user or empty).');
@@ -123,7 +144,7 @@ async function sendExpenseNotification(expense: any) {
     }
 }
 
-async function sendSettlementNotification(settlement: any) {
+async function sendSettlementNotification(settlement: SettlementData) {
     const { fromUser, toUser, amount } = settlement;
 
     const payerName = await getUserName(fromUser, settlement.groupId);
@@ -152,14 +173,14 @@ async function sendSettlementNotification(settlement: any) {
 
 export const onExpenseCreate = functions.firestore
     .document('expenses/{expenseId}')
-    .onCreate(async (snap, context) => {
-        const expense = snap.data();
+    .onCreate(async (snap) => {
+        const expense = snap.data() as ExpenseData;
         if (expense) await sendExpenseNotification(expense);
     });
 
 export const onSettlementCreate = functions.firestore
     .document('settlements/{settlementId}')
-    .onCreate(async (snap, context) => {
-        const settlement = snap.data();
+    .onCreate(async (snap) => {
+        const settlement = snap.data() as SettlementData;
         if (settlement) await sendSettlementNotification(settlement);
     });

@@ -27,6 +27,7 @@ export function calculateSplit(
 }
 
 function calculateEqualSplit(amount: number, members: string[]): Record<string, number> {
+    if (members.length === 0) return {};
     const share = Math.round((amount / members.length) * 100) / 100;
     const result: Record<string, number> = {};
     members.forEach((uid) => {
@@ -34,7 +35,7 @@ function calculateEqualSplit(amount: number, members: string[]): Record<string, 
     });
     // Adjust rounding difference to first member
     const diff = amount - share * members.length;
-    if (diff !== 0 && members.length > 0) {
+    if (diff !== 0) {
         result[members[0]] = Math.round((result[members[0]] + diff) * 100) / 100;
     }
     return result;

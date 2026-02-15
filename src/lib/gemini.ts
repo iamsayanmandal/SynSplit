@@ -87,7 +87,8 @@ export function buildExpenseContext(data: {
     if (contributions && contributions.length > 0) {
         ctx += `Pool contributions:\n`;
         contributions.forEach((c) => {
-            ctx += `- ${memberMap[c.userId] || c.userId}: ₹${c.amount} on ${new Date(c.createdAt).toLocaleDateString()}\n`;
+            const contributor = memberMap[c.userId] || 'Member';
+            ctx += `- ${contributor}: ₹${c.amount} on ${new Date(c.createdAt).toLocaleDateString()}\n`;
         });
         ctx += '\n';
     }
