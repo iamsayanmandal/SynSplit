@@ -2,20 +2,23 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── Helers ───
+    // ─── Helpers ───
 
     function isAuthenticated() {
       return request.auth != null;
     }
 
     // Check if user is a member of the group
-    // Uses 'memberUids' for efficiency. Fallback to 'createdBy' for migration.
+    // Safe lookup: checks if doc exists before accessing .data to prevent evaluation errors.
     function isGroupMember(groupId) {
-      let group = get(/databases/$(database)/documents/groups/$(groupId)).data;
-      return isAuthenticated() && (
-        (group.memberUids != null && request.auth.uid in group.memberUids) || 
-        group.createdBy == request.auth.uid
-      );
+      let groupPath = /databases/$(database)/documents/groups/$(groupId);
+      return isAuthenticated() && 
+             exists(groupPath) && 
+             (
+               (get(groupPath).data.memberUids != null && request.auth.uid in get(groupPath).data.memberUids) || 
+               (get(groupPath).data.memberEmails != null && request.auth.token.email.lower() in get(groupPath).data.memberEmails) ||
+               get(groupPath).data.createdBy == request.auth.uid
+             );
     }
 
     function isMemberOfResource(resourceData) {
@@ -26,26 +29,26 @@ service cloud.firestore {
     // ─── Rules ───
 
     // Groups:
-    // - Create: Authenticated users. Validation: user must be in memberUids.
-    // - Read/Update: Must be a member (or creator).
-    // - Delete: Only Creator.
     match /groups/{groupId} {
+      // Create: Authenticated users. Validation: user must be in memberUids.
       allow create: if isAuthenticated() && 
                     request.resource.data.createdBy == request.auth.uid &&
                     request.auth.uid in request.resource.data.memberUids;
       
-      // Strict: Must be a member to read.
-      allow read: if isAuthenticated() && isMemberOfResource(resource.data);
+      // Read: Split into get and list for query validation
+      allow get: if isAuthenticated() && isMemberOfResource(resource.data);
+      // List: Explicitly match the array-contains query (checking both UIDs and Emails)
+      allow list: if isAuthenticated() && (
+        (resource.data.memberUids != null && request.auth.uid in resource.data.memberUids) ||
+        (resource.data.memberEmails != null && request.auth.token.email.lower() in resource.data.memberEmails) ||
+        resource.data.createdBy == request.auth.uid
+      );
       
       allow update: if isAuthenticated() && isMemberOfResource(resource.data);
-                    // Constraint: Cannot remove yourself entirely without logic? 
-                    // For now, simplicity: if you are a member, you can update (e.g. edit name, add expense).
-      
       allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
     }
 
     // Expenses:
-    // - Read/Write: Must be a member of the group.
     match /expenses/{expenseId} {
       allow read: if isGroupMember(resource.data.groupId);
       allow create: if isGroupMember(request.resource.data.groupId);
@@ -53,15 +56,6 @@ service cloud.firestore {
     }
 
     // Pool Contributions:
-    match /pool_contributions/{contribId} {
-      allow read, write: if isGroupMember(resource.data.groupId); // On create check request, on read check specific doc?
-                                                                  // 'write' covers create/update/delete.
-                                                                  // For create: request.resource.data.groupId
-                                                                  // For update/delete/read: resource.data.groupId
-                                                                  // Firestore uses 'resource' for read/delete, 'request.resource' for create/update.
-                                                                  // We need split rules for safety.
-    }
-    // Split for safety:
     match /pool_contributions/{contribId} {
       allow create: if isGroupMember(request.resource.data.groupId);
       allow read, update, delete: if isGroupMember(resource.data.groupId);
@@ -80,7 +74,6 @@ service cloud.firestore {
     }
 
     // Notifications: 
-    // - Write: Allow if for self, OR if targeting a group member (anti-spam check)
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       

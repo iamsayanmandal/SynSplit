@@ -93,9 +93,10 @@ async function sendExpenseNotification(expense: ExpenseData) {
     const payerName = await getUserName(paidBy, expense.groupId);
 
     // 2. Identify Recipients (Participants excluding Payer)
-    const recipients = usedBy.filter(uid => uid !== paidBy);
+    // 2. Identify Recipients (Participants excluding Payer, Unique)
+    const uniqueRecipients = [...new Set(usedBy.filter(uid => uid !== paidBy))];
 
-    if (recipients.length === 0) {
+    if (uniqueRecipients.length === 0) {
         console.log('[DEBUG] No recipients to notify (payer is only user or empty).');
         return;
     }
@@ -103,19 +104,20 @@ async function sendExpenseNotification(expense: ExpenseData) {
     const messages: admin.messaging.Message[] = [];
 
     // 3. Create Personalized Messages
-    for (const uid of recipients) {
+    for (const uid of uniqueRecipients) {
         const share = calculateShare(expense, uid);
         const formattedShare = share.toFixed(2).replace(/\.00$/, '');
         const formattedTotal = expense.amount.toFixed(2).replace(/\.00$/, '');
 
         const userTokens = await getTokens(uid);
+        const uniqueTokens = [...new Set(userTokens)]; // Deduplicate tokens
 
-        for (const token of userTokens) {
+        for (const token of uniqueTokens) {
             messages.push({
                 token: token,
                 notification: {
                     title: `New Expense by ${payerName}`,
-                    body: `${expense.description}\nTotal: ₹${formattedTotal} • Your Share: ₹${formattedShare}`,
+                    body: `New expense added by ${payerName} • ${expense.description}\nTotal: ₹${formattedTotal} • Your Share: ₹${formattedShare}`,
                 },
                 webpush: {
                     fcmOptions: {

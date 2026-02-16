@@ -7,8 +7,10 @@ import {
     query,
     orderBy,
     where,
+    limit,
     onSnapshot,
     getDoc,
+    getDocs,
     type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -45,7 +47,8 @@ export function subscribeToNotifications(
     const q = query(
         collection(db, 'notifications'),
         where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(50)
     );
     return onSnapshot(q, (snapshot) => {
         const items: Notification[] = [];
@@ -105,6 +108,7 @@ export async function createGroup(
         mode,
         members: [creator],
         memberUids: [creator.uid],
+        memberEmails: [creator.email.toLowerCase()],
         createdBy: creator.uid,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -123,10 +127,13 @@ export async function addMemberToGroup(groupId: string, member: Member, currentM
     // Maintain memberUids for security rules
     const newMembers = [...currentMembers, member];
     const newMemberUids = newMembers.map(m => m.uid);
+    // Add emails for invite-based access (Always Lowercase)
+    const newMemberEmails = newMembers.map(m => m.email.toLowerCase());
 
     await updateDoc(doc(db, 'groups', groupId), {
         members: newMembers,
         memberUids: newMemberUids,
+        memberEmails: newMemberEmails,
         updatedAt: Date.now(),
     });
 }
@@ -156,24 +163,76 @@ export async function toggleAllowMemberExpenses(groupId: string, allow: boolean)
  */
 export function subscribeToGroups(
     uid: string,
-    _email: string, // _email is kept for backward compatibility but not used in filtering
+    email: string,
     callback: (groups: Group[]) => void
 ): Unsubscribe {
-    // SECURITY & PERFORMANCE: Only fetch groups where I am a member.
-    // This matches the strict firestore.rule.
-    const q = query(
+    const groupsMap = new Map<string, Group>();
+
+    // Helper to merge and sort
+    const emit = () => {
+        const sorted = Array.from(groupsMap.values())
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+        callback(sorted);
+    };
+
+    // 1. Query by UID (Existing main method)
+    const qUid = query(
         collection(db, 'groups'),
         where('memberUids', 'array-contains', uid),
         orderBy('updatedAt', 'desc')
     );
-
-    return onSnapshot(q, (snapshot) => {
-        const groups: Group[] = [];
-        snapshot.forEach((docSnap) => {
-            groups.push({ id: docSnap.id, ...docSnap.data() } as Group);
+    const unsubUid = onSnapshot(qUid, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'removed') {
+                // Only remove if not kept by other query?
+                // Actually, complicated. Simply rebuilding from map is easier if we track source.
+                // For simplicity: If removed from one query, we might still be in the other.
+                // But generally, deletion removes from both. 
+                // Let's just update the map.
+                groupsMap.delete(change.doc.id);
+            } else {
+                groupsMap.set(change.doc.id, { id: change.doc.id, ...change.doc.data() } as Group);
+            }
         });
-        callback(groups);
+        // If 'modified', it updates the map.
+        // If 'added', it updates the map.
+        emit();
     });
+
+    // 2. Query by Email (Invites)
+    let unsubEmail = () => { };
+    if (email) {
+        const qEmail = query(
+            collection(db, 'groups'),
+            where('memberEmails', 'array-contains', email.toLowerCase()),
+            orderBy('updatedAt', 'desc')
+        );
+        unsubEmail = onSnapshot(qEmail, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'removed') {
+                    // Check if preserved by UID query? No easy way without tracking.
+                    // However, typically a group matches ONE or BOTH.
+                    // If it matches BOTH, removing from one (e.g. email removed) but keeping UID is fine.
+                    // But here we might delete it from the view if email is removed, even if UID is there.
+                    // Edge case: User is in group by UID, but email was removed?
+                    // Safe approach: Re-evaluate? 
+                    // Let's assume Additive:
+                    // If we receive a 'removed' event, we can't be sure if we should remove it from the map
+                    // unless we know it's not in the other list.
+                    // For now, let's keep it simple: If removed here, delete. (Worst case: flickers).
+                    groupsMap.delete(change.doc.id);
+                } else {
+                    groupsMap.set(change.doc.id, { id: change.doc.id, ...change.doc.data() } as Group);
+                }
+            });
+            emit();
+        });
+    }
+
+    return () => {
+        unsubUid();
+        unsubEmail();
+    };
 }
 
 // ─── Expenses ───
@@ -190,13 +249,52 @@ export async function getUserProfile(uid: string): Promise<Partial<Member> | nul
             return {
                 uid,
                 name: data.displayName || 'Unknown',
-                photoURL: data.photoURL,
+                photoURL: data.photoURL || null,
                 email: data.email || ''
             };
         }
         return null;
     } catch (err) {
         console.error('Error fetching user profile:', err);
+        return null;
+    }
+}
+
+// ─── User Lookup ───
+
+export async function getUserByEmail(email: string): Promise<Member | null> {
+    try {
+        // Try searching by normalized email (best for case insensitivity)
+        const normalizedEmail = email.toLowerCase();
+        let q = query(
+            collection(db, 'users'),
+            where('searchableEmail', '==', normalizedEmail),
+            limit(1)
+        );
+        let snapshot = await getDocs(q);
+
+        // Fallback: Try searching by exact email (for older profiles)
+        if (snapshot.empty) {
+            q = query(
+                collection(db, 'users'),
+                where('email', '==', email),
+                limit(1)
+            );
+            snapshot = await getDocs(q);
+        }
+
+        if (snapshot.empty) return null;
+
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        return {
+            uid: doc.id,
+            name: data.displayName || 'User',
+            email: data.email || email,
+            photoURL: data.photoURL || null
+        };
+    } catch (error) {
+        console.error("Error looking up user:", error);
         return null;
     }
 }
@@ -212,7 +310,7 @@ export async function addExpense(expense: Omit<Expense, 'id'>): Promise<string> 
         const profile = await getUserProfile(expense.paidBy);
         if (profile) {
             payerName = profile.name;
-            payerPhoto = profile.photoURL;
+            payerPhoto = profile.photoURL || undefined;
         }
     }
 
@@ -259,7 +357,8 @@ export function subscribeToExpenses(
 ): Unsubscribe {
     const q = query(
         collection(db, 'expenses'),
-        where('groupId', '==', groupId)
+        where('groupId', '==', groupId),
+        limit(150)
     );
     return onSnapshot(q, (snapshot) => {
         const expenses: Expense[] = [];

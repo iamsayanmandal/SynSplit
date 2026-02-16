@@ -5,6 +5,8 @@ import Layout from './components/Layout';
 import { requestPermissionAndSaveToken } from './lib/messaging';
 import { onMessage } from 'firebase/messaging';
 import { messaging } from './firebase';
+import { useState } from 'react';
+import NotificationToast from './components/NotificationToast';
 
 // Lazy load pages
 const Login = lazy(() => import('./pages/Login'));
@@ -38,21 +40,27 @@ function AppRoutes() {
     }
   }, [user]);
 
+  const [notification, setNotification] = useState<any>(null);
+
   useEffect(() => {
     // Listen for foreground messages
     if (messaging) {
       const unsubscribe = onMessage(messaging, (payload) => {
         console.log('[Foreground] Message received: ', payload);
-        const { title, body } = payload.notification || {};
 
-        if (title) {
-          // Use the browser's Notification API if permission granted
-          if (Notification.permission === "granted") {
-            new Notification(title, { body, icon: '/icon.svg' });
-          } else {
-            // Fallback to alert (simple for testing)
-            alert(`${title}\n${body}`);
-          }
+        // Robust extraction: payload.notification OR payload.data
+        const title = payload.notification?.title || payload.data?.title;
+        const body = payload.notification?.body || payload.data?.body;
+
+        if (title && body) {
+          // Play a subtle sound
+          try {
+            const audio = new Audio('/notification.mp3');
+            audio.play().catch(() => { }); // Ignore interaction errors
+          } catch (e) { }
+
+          // Show custom toast with high priority
+          setNotification({ title, body, data: payload.data });
         }
       });
       return () => unsubscribe();
@@ -81,6 +89,7 @@ function AppRoutes() {
         ) : null}
         <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
       </Routes>
+      <NotificationToast notification={notification} onClose={() => setNotification(null)} />
     </Suspense>
   );
 }

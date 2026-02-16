@@ -34,6 +34,13 @@ export default function Expenses() {
     // Resolved users for removed members
     const [resolvedUsers, setResolvedUsers] = useState<Record<string, Partial<Member>>>({});
 
+    // Filter State
+    const [showFilters, setShowFilters] = useState(false);
+    const [dateFilter, setDateFilter] = useState<'all' | 'thisMonth' | 'lastMonth' | 'custom'>('all');
+    const [customStart, setCustomStart] = useState('');
+    const [customEnd, setCustomEnd] = useState('');
+    const [memberFilter, setMemberFilter] = useState<string>('all');
+
     // Identify and fetch unknown users
     useEffect(() => {
         if (!activeGroup || expenses.length === 0) return;
@@ -66,12 +73,37 @@ export default function Expenses() {
     }, [expenses, activeGroup, resolvedUsers]);
 
 
-    const filtered = search.trim()
-        ? expenses.filter((e) =>
-            e.description.toLowerCase().includes(search.toLowerCase()) ||
-            CATEGORY_META[e.category as ExpenseCategory]?.label.toLowerCase().includes(search.toLowerCase())
-        )
-        : expenses;
+    const filtered = expenses.filter((e) => {
+        // 1. Text Search
+        if (search.trim()) {
+            const matchesDesc = e.description.toLowerCase().includes(search.toLowerCase());
+            const matchesCat = CATEGORY_META[e.category as ExpenseCategory]?.label.toLowerCase().includes(search.toLowerCase());
+            if (!matchesDesc && !matchesCat) return false;
+        }
+
+        // 2. Member Filter (Paid By)
+        if (memberFilter !== 'all') {
+            if (e.paidBy !== memberFilter) return false;
+        }
+
+        // 3. Date Filter
+        const date = new Date(e.createdAt);
+        const now = new Date();
+
+        if (dateFilter === 'thisMonth') {
+            if (date.getMonth() !== now.getMonth() || date.getFullYear() !== now.getFullYear()) return false;
+        } else if (dateFilter === 'lastMonth') {
+            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            if (date.getMonth() !== lastMonth.getMonth() || date.getFullYear() !== lastMonth.getFullYear()) return false;
+        } else if (dateFilter === 'custom' && customStart && customEnd) {
+            const start = new Date(customStart);
+            const end = new Date(customEnd);
+            end.setHours(23, 59, 59, 999); // End of selected day
+            if (date < start || date > end) return false;
+        }
+
+        return true;
+    });
 
     const handleExport = () => {
         if (!activeGroup || expenses.length === 0) return;
@@ -171,15 +203,101 @@ export default function Expenses() {
                 </div>
             </div>
 
-            {/* Search */}
-            {expenses.length > 3 && (
-                <div className="relative mb-4">
-                    <Search className="w-4 h-4 text-dark-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                        type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search expenses..."
-                        className="input-dark !pl-10 text-sm"
-                    />
+            {/* Search & Filter Bar */}
+            {expenses.length > 0 && (
+                <div className="space-y-3 mb-4">
+                    <div className="flex gap-2">
+                        <div className="relative flex-1">
+                            <Search className="w-4 h-4 text-dark-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                                type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Search expenses..."
+                                className="input-dark !pl-10 text-sm w-full"
+                            />
+                        </div>
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`p-2.5 rounded-xl border transition-colors ${showFilters
+                                ? 'bg-accent/10 border-accent text-accent-light'
+                                : 'bg-dark-800 border-dark-700 text-dark-400 hover:text-white'}`}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                        </button>
+                    </div>
+
+                    {/* Advanced Filters Panel */}
+                    <AnimatePresence>
+                        {showFilters && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <div className="bg-dark-800/50 rounded-xl p-3 border border-dark-700/50 space-y-3">
+                                    {/* Date Range */}
+                                    <div>
+                                        <label className="text-[10px] uppercase tracking-wider text-dark-500 font-bold mb-1.5 block">Date Range</label>
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {(['all', 'thisMonth', 'lastMonth'] as const).map((key) => (
+                                                <button
+                                                    key={key}
+                                                    onClick={() => setDateFilter(key)}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${dateFilter === key
+                                                        ? 'bg-accent/20 text-accent-light border border-accent/20'
+                                                        : 'bg-dark-700/50 text-dark-400 hover:bg-dark-700'
+                                                        }`}
+                                                >
+                                                    {key === 'all' ? 'All Time' : key === 'thisMonth' ? 'This Month' : 'Last Month'}
+                                                </button>
+                                            ))}
+                                            <button
+                                                onClick={() => setDateFilter('custom')}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${dateFilter === 'custom'
+                                                    ? 'bg-accent/20 text-accent-light border border-accent/20'
+                                                    : 'bg-dark-700/50 text-dark-400 hover:bg-dark-700'
+                                                    }`}
+                                            >
+                                                Custom
+                                            </button>
+                                        </div>
+                                        {dateFilter === 'custom' && (
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="date"
+                                                    value={customStart}
+                                                    onChange={(e) => setCustomStart(e.target.value)}
+                                                    className="bg-dark-900 border border-dark-700 rounded-lg px-2 py-1.5 text-xs text-white flex-1"
+                                                />
+                                                <span className="text-dark-500">-</span>
+                                                <input
+                                                    type="date"
+                                                    value={customEnd}
+                                                    onChange={(e) => setCustomEnd(e.target.value)}
+                                                    className="bg-dark-900 border border-dark-700 rounded-lg px-2 py-1.5 text-xs text-white flex-1"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Member Filter */}
+                                    <div>
+                                        <label className="text-[10px] uppercase tracking-wider text-dark-500 font-bold mb-1.5 block">Paid By</label>
+                                        <select
+                                            value={memberFilter}
+                                            onChange={(e) => setMemberFilter(e.target.value)}
+                                            className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-accent/50"
+                                        >
+                                            <option value="all">Everyone</option>
+                                            {activeGroup?.members.map(m => (
+                                                <option key={m.uid} value={m.uid}>{m.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             )}
 
@@ -190,8 +308,8 @@ export default function Expenses() {
                 </div>
             ) : filtered.length === 0 ? (
                 <div className="glass-card p-8 text-center">
-                    <p className="text-dark-400 font-medium">{search ? 'No matching expenses' : 'No expenses yet'}</p>
-                    {!search && (
+                    <p className="text-dark-400 font-medium">{search || memberFilter !== 'all' || dateFilter !== 'all' ? 'No matching expenses' : 'No expenses yet'}</p>
+                    {!search && memberFilter === 'all' && dateFilter === 'all' && (
                         <button onClick={() => navigate('/add')} className="text-accent-light text-xs font-medium mt-2">
                             Add your first expense →
                         </button>

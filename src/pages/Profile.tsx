@@ -6,7 +6,7 @@ import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
-import { deleteGroup, addMemberToGroup, addPoolContribution, updateGroupName, removeMemberFromGroup, toggleAllowMemberExpenses } from '../lib/firestore';
+import { deleteGroup, addMemberToGroup, addPoolContribution, updateGroupName, removeMemberFromGroup, toggleAllowMemberExpenses, getUserByEmail } from '../lib/firestore';
 import CreateGroup from '../components/CreateGroup';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Member } from '../types';
@@ -128,17 +128,36 @@ export default function Profile() {
         if (!group) return;
         setAddingMember(true);
         try {
-            const newMember: Member = {
-                uid: memberEmail.trim().replace(/[^a-zA-Z0-9]/g, '_'),
+            // DIRECT ADD: Seamlessly add by email even if user doesn't exist yet
+            const safeId = memberEmail.trim().replace(/[^a-zA-Z0-9]/g, '_');
+
+            // Optional: Try to link to real user if they exist
+            const realUser = await getUserByEmail(memberEmail.trim());
+
+            const memberToAdd: Member = realUser || {
+                uid: `invite_${safeId}`,
                 name: memberName.trim(),
                 email: memberEmail.trim(),
+                photoURL: null
             };
-            await addMemberToGroup(group.id, newMember, group.members);
+
+            // Check if already in group (by UID or Email)
+            if (group.members.some(m => m.uid === memberToAdd.uid || m.email === memberToAdd.email)) {
+                alert("This user is already in the group.");
+                return;
+            }
+
+            await addMemberToGroup(group.id, memberToAdd, group.members);
             setMemberName('');
             setMemberEmail('');
             setAddingMemberTo(null);
+
+            if (!realUser) {
+                alert(`Added ${memberName}!\n\nThey will see this group automatically when they sign in with ${memberEmail}.`);
+            }
         } catch (err) {
             console.error('Failed to add member:', err);
+            alert("Failed to add member. Please try again.");
         } finally {
             setAddingMember(false);
         }
@@ -403,11 +422,11 @@ export default function Profile() {
             <AnimatePresence>
                 {addingMemberTo && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center"
+                        className="fixed inset-0 z-[70] bg-black/60 flex items-end sm:items-center justify-center"
                         onClick={() => setAddingMemberTo(null)}>
                         <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="bg-dark-900 rounded-t-3xl sm:rounded-3xl p-6 w-full max-w-md border border-glass-border"
+                            className="bg-dark-900 rounded-t-3xl sm:rounded-3xl p-6 pb-10 sm:pb-6 w-full max-w-md border border-glass-border"
                             onClick={(e) => e.stopPropagation()}>
                             <div className="w-10 h-1 rounded-full bg-dark-600 mx-auto mb-4 sm:hidden" />
                             <div className="flex items-center justify-between mb-4">
@@ -440,11 +459,11 @@ export default function Profile() {
             <AnimatePresence>
                 {addingPoolTo && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center"
+                        className="fixed inset-0 z-[70] bg-black/60 flex items-end sm:items-center justify-center"
                         onClick={() => setAddingPoolTo(null)}>
                         <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="bg-dark-900 rounded-t-3xl sm:rounded-3xl p-6 w-full max-w-md border border-glass-border"
+                            className="bg-dark-900 rounded-t-3xl sm:rounded-3xl p-6 pb-10 sm:pb-6 w-full max-w-md border border-glass-border"
                             onClick={(e) => e.stopPropagation()}>
                             <div className="w-10 h-1 rounded-full bg-dark-600 mx-auto mb-4 sm:hidden" />
                             <div className="flex items-center justify-between mb-4">

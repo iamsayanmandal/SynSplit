@@ -31,7 +31,7 @@ export interface Member {
     uid: string;
     name: string;
     email: string;
-    photoURL?: string;
+    photoURL?: string | null;
 }
 
 export interface Group {

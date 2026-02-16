@@ -24,7 +24,7 @@ export default function CreateGroup({ open, onClose }: Props) {
                 uid: user.uid,
                 name: user.displayName || 'User',
                 email: user.email || '',
-                photoURL: user.photoURL || undefined,
+                photoURL: user.photoURL || null,
             });
             setName('');
             setMode('direct');
@@ -43,7 +43,7 @@ export default function CreateGroup({ open, onClose }: Props) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center"
+                    className="fixed inset-0 z-[70] bg-black/60 flex items-end sm:items-center justify-center p-4 sm:p-0 pb-safe sm:pb-0"
                     onClick={onClose}
                 >
                     <motion.div
@@ -84,8 +84,8 @@ export default function CreateGroup({ open, onClose }: Props) {
                                 <button
                                     onClick={() => setMode('direct')}
                                     className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${mode === 'direct'
-                                            ? 'border-success bg-success/10'
-                                            : 'border-glass-border bg-dark-800/50 hover:border-dark-500'
+                                        ? 'border-success bg-success/10'
+                                        : 'border-glass-border bg-dark-800/50 hover:border-dark-500'
                                         }`}
                                 >
                                     <span className="text-2xl block mb-2">💳</span>
@@ -95,8 +95,8 @@ export default function CreateGroup({ open, onClose }: Props) {
                                 <button
                                     onClick={() => setMode('pool')}
                                     className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${mode === 'pool'
-                                            ? 'border-accent bg-accent/10'
-                                            : 'border-glass-border bg-dark-800/50 hover:border-dark-500'
+                                        ? 'border-accent bg-accent/10'
+                                        : 'border-glass-border bg-dark-800/50 hover:border-dark-500'
                                         }`}
                                 >
                                     <span className="text-2xl block mb-2">💰</span>
