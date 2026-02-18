@@ -60,8 +60,20 @@ export async function askGemini(
     }
 
     const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty response from Gemini');
+
+    // Check for safety filter blocks
+    const candidate = data?.candidates?.[0];
+    if (candidate?.finishReason === 'SAFETY') {
+        console.warn('Gemini response blocked by safety filters:', candidate.safetyRatings);
+        return 'I couldn\'t generate a response for this query. Please try rephrasing your question.';
+    }
+
+    const text = candidate?.content?.parts?.[0]?.text;
+    if (!text) {
+        console.warn('Empty Gemini response. Full payload:', JSON.stringify(data, null, 2));
+        // Return graceful fallback instead of throwing
+        return 'I couldn\'t generate insights right now. Please try again in a moment.';
+    }
     return text;
 }
 
