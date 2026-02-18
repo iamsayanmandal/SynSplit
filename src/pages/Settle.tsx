@@ -2,23 +2,16 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingDown, TrendingUp, Check, Users, History, Wallet } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useActiveGroup } from '../contexts/ActiveGroupContext';
-import { useGroups, useExpenses, usePoolContributions, useSettlements, useBalances } from '../hooks/hooks';
+import { useGroupData } from '../contexts/GroupDataContext';
 import { calculateSplit } from '../lib/splitCalculator';
 import { addSettlement } from '../lib/firestore';
 import { format } from 'date-fns';
 
 export default function Settle() {
     const { user } = useAuth();
-    const { groups } = useGroups();
-    const { activeGroupId } = useActiveGroup();
+    const { activeGroup, expenses, contributions, settlements, debts } = useGroupData();
 
-    const activeGroup = groups.find((g) => g.id === activeGroupId) || null;
     const isPool = activeGroup?.mode === 'pool';
-    const { expenses } = useExpenses(activeGroupId || undefined);
-    const { contributions } = usePoolContributions(activeGroupId || undefined);
-    const { settlements } = useSettlements(activeGroupId || undefined);
-    const { debts } = useBalances(activeGroup, expenses, contributions, settlements);
 
     const [settlingDebt, setSettlingDebt] = useState<{ from: string; to: string; amount: number } | null>(null);
     const [settled, setSettled] = useState(false);
@@ -87,9 +80,9 @@ export default function Settle() {
     }, [debts, user]);
 
     const handleSettle = async () => {
-        if (!settlingDebt || !activeGroupId) return;
+        if (!settlingDebt || !activeGroup?.id) return;
         await addSettlement({
-            groupId: activeGroupId,
+            groupId: activeGroup.id,
             fromUser: settlingDebt.from,
             toUser: settlingDebt.to,
             amount: settlingDebt.amount,

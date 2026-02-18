@@ -2,18 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, X, Send, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useActiveGroup } from '../contexts/ActiveGroupContext';
-import { useGroups, useExpenses, usePoolContributions } from '../hooks/hooks';
+import { useGroupData } from '../contexts/GroupDataContext';
 import { askGemini, buildExpenseContext, SYNBOT_SYSTEM_INSTRUCTION } from '../lib/gemini';
 import type { ChatMessage } from '../lib/gemini';
 
 export default function SynBot() {
     const { user } = useAuth();
-    const { groups } = useGroups();
-    const { activeGroupId } = useActiveGroup();
-    const activeGroup = groups.find((g) => g.id === activeGroupId) || null;
-    const { expenses } = useExpenses(activeGroupId || undefined);
-    const { contributions } = usePoolContributions(activeGroupId || undefined);
+    const { activeGroup, expenses, contributions } = useGroupData();
 
     const [open, setOpen] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([]);

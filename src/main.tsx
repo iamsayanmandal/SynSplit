@@ -4,13 +4,19 @@ import App from './App.tsx';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { ActiveGroupProvider } from './contexts/ActiveGroupContext';
+import { GroupDataProvider } from './contexts/GroupDataContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <ActiveGroupProvider>
-        <App />
-      </ActiveGroupProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ActiveGroupProvider>
+          <GroupDataProvider>
+            <App />
+          </GroupDataProvider>
+        </ActiveGroupProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>
 );

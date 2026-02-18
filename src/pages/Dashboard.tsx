@@ -4,15 +4,15 @@ import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Wallet, Plus, ChevronDown, Clock, ArrowRightLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
-import { useGroups, useExpenses, usePoolContributions, useSettlements, useBalances } from '../hooks/hooks';
+import { useGroupData } from '../contexts/GroupDataContext';
 import { calculateSplit } from '../lib/splitCalculator';
 import { CATEGORY_META } from '../types';
-import type { ExpenseCategory, Group } from '../types';
+import type { ExpenseCategory } from '../types';
 import { format } from 'date-fns';
 
 export default function Dashboard() {
     const { user } = useAuth();
-    const { groups, loading } = useGroups();
+    const { groups, groupsLoading: loading, activeGroup, expenses, contributions, settlements, debts } = useGroupData();
     const { activeGroupId, setActiveGroupId } = useActiveGroup();
     const navigate = useNavigate();
 
@@ -25,13 +25,6 @@ export default function Dashboard() {
             setActiveGroupId(groups[0].id);
         }
     }, [loading, groups, activeGroupId, setActiveGroupId]);
-
-    const activeGroup = useMemo(() => groups.find((g) => g.id === activeGroupId) as Group | undefined, [groups, activeGroupId]);
-
-    const { expenses } = useExpenses(activeGroupId || undefined);
-    const { contributions } = usePoolContributions(activeGroupId || undefined);
-    const { settlements } = useSettlements(activeGroupId || undefined);
-    const { debts } = useBalances(activeGroup || null, expenses, contributions, settlements);
 
     const isPool = activeGroup?.mode === 'pool';
 
