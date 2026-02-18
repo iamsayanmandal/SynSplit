@@ -1,21 +1,21 @@
-# SynSplit 💸
+# SynSplit 
 
-A modern, lightweight expense splitting app built with React + Firebase. Split bills with friends, manage pool money, and settle debts — all from a beautiful mobile-first UI.
+A modern, lightweight expense-splitting app built with React and Firebase. Split bills with friends, manage pool money, and settle debts — all from a beautiful mobile-first UI.
 
-**Live:** [sayansplit.web.app](https://sayansplit.web.app)
+**Live:** [https://synsplit.sayanmandal.in](https://synsplit.sayanmandal.in/)
 
 ## Features
 
-- 🔐 **Google Sign-In** — one-tap authentication
-- 👥 **Groups** — create groups, add members by Gmail, admin-based management
-- 💳 **Direct Mode** — track who paid and split equally
-- 💰 **Pool Mode** — monthly pool fund with contributions
-- 📊 **Settle Tab** — per-member breakdown, who owes whom, one-tap settle
-- 📝 **Expense Management** — add, edit (48hr window), delete with confirmation
-- 🔍 **Search** — filter expenses by description or category
-- 👑 **Admin Controls** — edit group name, remove members, control expense permissions
-- 📜 **History** — pool contribution and settlement history
-- 🎨 **Premium UI** — dark glassmorphism, smooth animations, mobile-first
+- **Google Sign-In** — one-tap authentication
+-  **Groups** — create groups, add members by Gmail, admin-based management
+-  **Direct Mode** — track who paid and split equally
+-  **Pool Mode** — monthly pool fund with contributions
+-  **Settle Tab** — per-member breakdown, who owes whom, one-tap settle
+-  **Expense Management** — add, edit (48hr window), delete with confirmation
+-  **Search** — filter expenses by description or category
+-  **Admin Controls** — edit group name, remove members, control expense permissions
+-  **History** — pool contribution and settlement history
+-  **Premium UI** — dark glassmorphism, smooth animations, mobile-first
 
 ## Tech Stack
 
@@ -81,4 +81,4 @@ src/
 
 ---
 
-Developed by [Sayan Mandal](https://sayanmandal.in)
+Developed by [https://synsplit.sayanmandal.in](https://synsplit.sayanmandal.in/)
