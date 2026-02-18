@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'robots.txt', 'sitemap.xml'],
+      includeAssets: ['icon.svg', 'Logo.png', 'robots.txt', 'sitemap.xml'],
       manifest: {
         name: 'SynSplit - Smart Expense Manager',
         short_name: 'SynSplit',
@@ -19,6 +19,12 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         icons: [
+          {
+            src: 'Logo.png',
+            sizes: '192x192 512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
           {
             src: 'icon.svg',
             sizes: '192x192 512x512',

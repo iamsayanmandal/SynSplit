@@ -92,7 +92,6 @@ async function sendExpenseNotification(expense: ExpenseData) {
     // 1. Get Payer Name
     const payerName = await getUserName(paidBy, expense.groupId);
 
-    // 2. Identify Recipients (Participants excluding Payer)
     // 2. Identify Recipients (Participants excluding Payer, Unique)
     const uniqueRecipients = [...new Set(usedBy.filter(uid => uid !== paidBy))];
 

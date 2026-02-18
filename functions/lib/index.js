@@ -14,14 +14,16 @@ function calculateShare(expense, userId) {
         case 'equal':
             return amount / usedBy.length;
         case 'unequal':
-            return (splitDetails === null || splitDetails === void 0 ? void 0 : splitDetails[userId]) || 0;
+            return (splitDetails && splitDetails[userId]) ? splitDetails[userId] : 0;
         case 'percentage':
-            return (amount * ((splitDetails === null || splitDetails === void 0 ? void 0 : splitDetails[userId]) || 0)) / 100;
-        case 'share':
+            return (amount * ((splitDetails && splitDetails[userId]) ? splitDetails[userId] : 0)) / 100;
+        case 'share': {
             // Sum total shares
-            const totalShares = Object.values(splitDetails || {}).reduce((a, b) => a + b, 0);
-            const userShare = (splitDetails === null || splitDetails === void 0 ? void 0 : splitDetails[userId]) || 0;
+            const details = splitDetails || {};
+            const totalShares = Object.values(details).reduce((a, b) => a + b, 0);
+            const userShare = details[userId] || 0;
             return totalShares ? (amount * userShare) / totalShares : 0;
+        }
         default:
             return 0;
     }
@@ -62,25 +64,26 @@ async function sendExpenseNotification(expense) {
     const { paidBy, usedBy } = expense;
     // 1. Get Payer Name
     const payerName = await getUserName(paidBy, expense.groupId);
-    // 2. Identify Recipients (Participants excluding Payer)
-    const recipients = usedBy.filter(uid => uid !== paidBy);
-    if (recipients.length === 0) {
+    // 2. Identify Recipients (Participants excluding Payer, Unique)
+    const uniqueRecipients = [...new Set(usedBy.filter(uid => uid !== paidBy))];
+    if (uniqueRecipients.length === 0) {
         console.log('[DEBUG] No recipients to notify (payer is only user or empty).');
         return;
     }
     const messages = [];
     // 3. Create Personalized Messages
-    for (const uid of recipients) {
+    for (const uid of uniqueRecipients) {
         const share = calculateShare(expense, uid);
         const formattedShare = share.toFixed(2).replace(/\.00$/, '');
         const formattedTotal = expense.amount.toFixed(2).replace(/\.00$/, '');
         const userTokens = await getTokens(uid);
-        for (const token of userTokens) {
+        const uniqueTokens = [...new Set(userTokens)]; // Deduplicate tokens
+        for (const token of uniqueTokens) {
             messages.push({
                 token: token,
                 notification: {
                     title: `New Expense by ${payerName}`,
-                    body: `${expense.description}\nTotal: ₹${formattedTotal} • Your Share: ₹${formattedShare}`,
+                    body: `New expense added by ${payerName} • ${expense.description}\nTotal: ₹${formattedTotal} • Your Share: ₹${formattedShare}`,
                 },
                 webpush: {
                     fcmOptions: {
@@ -130,14 +133,14 @@ async function sendSettlementNotification(settlement) {
 // ─── Triggers ───
 exports.onExpenseCreate = functions.firestore
     .document('expenses/{expenseId}')
-    .onCreate(async (snap, context) => {
+    .onCreate(async (snap) => {
     const expense = snap.data();
     if (expense)
         await sendExpenseNotification(expense);
 });
 exports.onSettlementCreate = functions.firestore
     .document('settlements/{settlementId}')
-    .onCreate(async (snap, context) => {
+    .onCreate(async (snap) => {
     const settlement = snap.data();
     if (settlement)
         await sendSettlementNotification(settlement);

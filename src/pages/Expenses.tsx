@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, Check, Search, AlertTriangle, MapPin, Download } from 'lucide-react';
+import { Trash2, Plus, Download, Search, MapPin, Pencil, Check, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses } from '../hooks/hooks';
@@ -105,9 +105,65 @@ export default function Expenses() {
         return true;
     });
 
-    const handleExport = () => {
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportPeriod, setExportPeriod] = useState<'current' | 'thisMonth' | 'lastMonth' | 'allTime' | 'custom'>('current');
+    const [exportStart, setExportStart] = useState('');
+    const [exportEnd, setExportEnd] = useState('');
+
+    const handleExportClick = () => {
         if (!activeGroup || expenses.length === 0) return;
-        exportGroupExpenses(activeGroup.name, expenses, activeGroup.members);
+        setShowExportModal(true);
+    };
+
+    const confirmExport = () => {
+        if (!activeGroup) return;
+
+        let expensesToExport = expenses;
+        let label = 'All Time';
+
+        // Filter Logic for Export
+        if (exportPeriod === 'current') {
+            expensesToExport = filtered;
+            label = 'Current Filtered View';
+        } else if (exportPeriod === 'thisMonth') {
+            const now = new Date();
+            expensesToExport = expenses.filter(e => {
+                const d = new Date(e.createdAt);
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            });
+            label = format(now, 'MMMM yyyy');
+        } else if (exportPeriod === 'lastMonth') {
+            const now = new Date();
+            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            expensesToExport = expenses.filter(e => {
+                const d = new Date(e.createdAt);
+                return d.getMonth() === lastMonth.getMonth() && d.getFullYear() === lastMonth.getFullYear();
+            });
+            label = format(lastMonth, 'MMMM yyyy');
+        } else if (exportPeriod === 'allTime') {
+            expensesToExport = expenses;
+            label = 'All Time';
+        } else if (exportPeriod === 'custom' && exportStart && exportEnd) {
+            const start = new Date(exportStart);
+            const end = new Date(exportEnd);
+            end.setHours(23, 59, 59, 999);
+            expensesToExport = expenses.filter(e => {
+                const d = new Date(e.createdAt);
+                return d >= start && d <= end;
+            });
+            label = `${format(start, 'dd MMM')} - ${format(end, 'dd MMM yyyy')}`;
+        }
+
+        // Sort by date desc
+        expensesToExport.sort((a, b) => b.createdAt - a.createdAt);
+
+        if (expensesToExport.length === 0) {
+            alert(`No expenses found for ${label}`);
+            return;
+        }
+
+        exportGroupExpenses(activeGroup.name, expensesToExport, activeGroup.members, label);
+        setShowExportModal(false);
     };
 
     const getMemberName = (uid: string, expense?: Expense) => {
@@ -190,7 +246,7 @@ export default function Expenses() {
                 </div>
                 <div className="flex gap-2">
                     {expenses.length > 0 && (
-                        <button onClick={handleExport}
+                        <button onClick={handleExportClick}
                             className="p-2.5 rounded-xl bg-dark-800 text-dark-200 hover:text-white hover:bg-dark-700 transition-colors"
                             title="Export PDF">
                             <Download className="w-5 h-5" />
@@ -202,6 +258,81 @@ export default function Expenses() {
                     </button>
                 </div>
             </div>
+
+            {/* Export Modal */}
+            <AnimatePresence>
+                {showExportModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowExportModal(false)}>
+                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+                            className="bg-dark-900 rounded-2xl p-6 w-full max-w-sm border border-glass-border shadow-xl"
+                            onClick={(e) => e.stopPropagation()}>
+
+                            <div className="flex items-center gap-3 mb-4 text-white">
+                                <div className="p-3 rounded-full bg-indigo-500/20 text-indigo-400">
+                                    <FileText size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold">Export Report</h3>
+                                    <p className="text-dark-400 text-xs">Select data range for PDF</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 mb-6">
+                                {[
+                                    { id: 'current', label: 'Current View', desc: 'Expenses currently shown in list' },
+                                    { id: 'thisMonth', label: 'This Month', desc: `Expenses from ${format(new Date(), 'MMMM')}` },
+                                    { id: 'lastMonth', label: 'Last Month', desc: `Expenses from ${format(new Date(new Date().setMonth(new Date().getMonth() - 1)), 'MMMM')}` },
+                                    { id: 'allTime', label: 'All Time', desc: 'Entire expense history' },
+                                    { id: 'custom', label: 'Custom Range', desc: 'Select specific dates' }
+                                ].map((opt) => (
+                                    <div key={opt.id}>
+                                        <button
+                                            onClick={() => setExportPeriod(opt.id as any)}
+                                            className={`w-full text-left p-3 rounded-xl border transition-all ${exportPeriod === opt.id
+                                                ? 'bg-indigo-500/10 border-indigo-500 text-white'
+                                                : 'bg-dark-800 border-transparent text-dark-300 hover:bg-dark-700'
+                                                }`}
+                                        >
+                                            <div className="font-medium text-sm">{opt.label}</div>
+                                            <div className="text-[10px] opacity-60">{opt.desc}</div>
+                                        </button>
+
+                                        {/* Custom Date Inputs inside the button container if selected */}
+                                        {opt.id === 'custom' && exportPeriod === 'custom' && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                className="mt-2 flex gap-2 overflow-hidden"
+                                            >
+                                                <input
+                                                    type="date"
+                                                    value={exportStart}
+                                                    onChange={e => setExportStart(e.target.value)}
+                                                    className="bg-dark-950 border border-dark-700 rounded-lg px-2 py-1.5 text-xs text-white flex-1"
+                                                />
+                                                <input
+                                                    type="date"
+                                                    value={exportEnd}
+                                                    onChange={e => setExportEnd(e.target.value)}
+                                                    className="bg-dark-950 border border-dark-700 rounded-lg px-2 py-1.5 text-xs text-white flex-1"
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button onClick={() => setShowExportModal(false)} className="btn-ghost flex-1 text-sm">Cancel</button>
+                                <button onClick={confirmExport} className="btn-primary flex-1 text-sm bg-indigo-600 hover:bg-indigo-500">
+                                    Download PDF
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Search & Filter Bar */}
             {expenses.length > 0 && (

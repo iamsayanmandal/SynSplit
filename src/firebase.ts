@@ -16,5 +16,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const messaging = getMessaging(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Messaging can fail on unsupported browsers (Safari iOS < 16.4, Firefox private mode)
+export const messaging = (() => {
+  try { return getMessaging(app); }
+  catch { return null; }
+})();

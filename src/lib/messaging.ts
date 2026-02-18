@@ -7,6 +7,10 @@ const VAPID_KEY = 'BIj59IOmlAiBWwEWlyJU0tNFbPLlb-Ggsv8mFjUSarbM-1tydWsTqIVVeCzM7
 
 export async function requestPermissionAndSaveToken(userId: string) {
     try {
+        if (!messaging) {
+            console.log('Push messaging not supported on this browser.');
+            return;
+        }
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
             const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });

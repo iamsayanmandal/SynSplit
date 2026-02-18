@@ -145,10 +145,12 @@ export async function updateGroupName(groupId: string, name: string) {
 export async function removeMemberFromGroup(groupId: string, memberUid: string, currentMembers: Member[]) {
     const updated = currentMembers.filter((m) => m.uid !== memberUid);
     const updatedUids = updated.map(m => m.uid);
+    const updatedEmails = updated.map(m => m.email.toLowerCase());
 
     await updateDoc(doc(db, 'groups', groupId), {
         members: updated,
         memberUids: updatedUids,
+        memberEmails: updatedEmails,
         updatedAt: Date.now()
     });
 }
@@ -322,14 +324,8 @@ export async function addExpense(expense: Omit<Expense, 'id'>): Promise<string> 
     });
     await updateDoc(doc(db, 'groups', expense.groupId), { updatedAt: Date.now() });
 
-    // Notify group members (in-app history)
-    await notifyGroupMembers(
-        expense.groupId,
-        'New Expense',
-        `${expense.description} - ₹${expense.amount}`,
-        'expense',
-        expense.paidBy
-    );
+    // Push notifications are handled by Cloud Functions (onExpenseCreate trigger)
+    // No need for duplicate in-app notifyGroupMembers call here
 
     return docRef.id;
 }
@@ -358,6 +354,7 @@ export function subscribeToExpenses(
     const q = query(
         collection(db, 'expenses'),
         where('groupId', '==', groupId),
+        orderBy('createdAt', 'desc'),
         limit(150)
     );
     return onSnapshot(q, (snapshot) => {
@@ -365,7 +362,6 @@ export function subscribeToExpenses(
         snapshot.forEach((doc) => {
             expenses.push({ id: doc.id, ...doc.data() } as Expense);
         });
-        expenses.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         callback(expenses);
     });
 }

@@ -28,11 +28,8 @@ export default function Login() {
                 className="w-full max-w-sm bg-dark-900 rounded-3xl p-8 border border-glass-border shadow-soft"
             >
                 <div className="flex flex-col items-center mb-10">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center mb-6 shadow-glow">
-                        <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center mb-6 shadow-glow p-4">
+                        <img src="/Logo.png" alt="SynSplit Logo" className="w-full h-full object-contain drop-shadow-md" />
                     </div>
                     <h1 className="text-2xl font-bold text-white mb-2">SynSplit</h1>
                     <p className="text-dark-400">Smart Expense Manager</p>

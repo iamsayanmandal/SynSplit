@@ -138,7 +138,7 @@ export default function AddExpense() {
                 usedBy,
                 splitType: 'equal' as SplitType,
                 ...(location ? { location } : {}),
-                createdAt: Date.now(),
+                createdAt: 0, // Will be overridden by firestore.ts
                 createdBy: user.uid,
             });
             navigate('/');

@@ -6,7 +6,7 @@ import { requestPermissionAndSaveToken } from './lib/messaging';
 import { onMessage } from 'firebase/messaging';
 import { messaging } from './firebase';
 import { useState } from 'react';
-import NotificationToast from './components/NotificationToast';
+import NotificationToast, { type NotificationPayload } from './components/NotificationToast';
 
 // Lazy load pages
 const Login = lazy(() => import('./pages/Login'));
@@ -40,7 +40,7 @@ function AppRoutes() {
     }
   }, [user]);
 
-  const [notification, setNotification] = useState<any>(null);
+  const [notification, setNotification] = useState<NotificationPayload | null>(null);
 
   useEffect(() => {
     // Listen for foreground messages

@@ -1,11 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Wallet, Bell } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { X, Wallet } from 'lucide-react';
+import { useEffect } from 'react';
 
 export interface NotificationPayload {
     title: string;
     body: string;
-    data?: any;
+    data?: Record<string, string>;
 }
 
 interface NotificationToastProps {
