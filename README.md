@@ -72,10 +72,6 @@ src/
 
 ## Roadmap
 
-- [ ] Analytics Dashboard with calendar view
-- [ ] Recurring expenses (rent, WiFi)
-- [ ] @SynBot AI search (Gemini-powered)
-- [ ] Voice-to-expense
 - [ ] Expense predictions
 - [ ] Offline mode with auto-sync
 
