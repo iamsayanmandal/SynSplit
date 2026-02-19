@@ -6,6 +6,92 @@ import { useGroupData } from '../contexts/GroupDataContext';
 import { askGemini, buildExpenseContext, SYNBOT_SYSTEM_INSTRUCTION } from '../lib/gemini';
 import type { ChatMessage } from '../lib/gemini';
 
+/**
+ * Lightweight markdown-to-JSX renderer for chat messages.
+ * Supports: **bold**, *italic*, `code`, bullet lists, numbered lists, line breaks.
+ */
+function renderMarkdown(text: string): React.ReactNode[] {
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let listItems: React.ReactNode[] = [];
+    let listType: 'ul' | 'ol' | null = null;
+
+    const flushList = () => {
+        if (listItems.length > 0 && listType) {
+            const Tag = listType;
+            elements.push(
+                <Tag key={`list-${elements.length}`} className={listType === 'ul' ? 'list-disc pl-4 my-1 space-y-0.5' : 'list-decimal pl-4 my-1 space-y-0.5'}>
+                    {listItems}
+                </Tag>
+            );
+            listItems = [];
+            listType = null;
+        }
+    };
+
+    const formatInline = (str: string): React.ReactNode[] => {
+        const parts: React.ReactNode[] = [];
+        // Regex: **bold**, *italic*, `code`
+        const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+        let lastIndex = 0;
+        let match;
+
+        while ((match = regex.exec(str)) !== null) {
+            if (match.index > lastIndex) {
+                parts.push(str.slice(lastIndex, match.index));
+            }
+            if (match[2]) {
+                parts.push(<strong key={`b-${match.index}`} className="font-semibold text-white">{match[2]}</strong>);
+            } else if (match[3]) {
+                parts.push(<em key={`i-${match.index}`} className="italic text-dark-300">{match[3]}</em>);
+            } else if (match[4]) {
+                parts.push(<code key={`c-${match.index}`} className="bg-dark-700/60 px-1 py-0.5 rounded text-accent text-[11px]">{match[4]}</code>);
+            }
+            lastIndex = regex.lastIndex;
+        }
+
+        if (lastIndex < str.length) {
+            parts.push(str.slice(lastIndex));
+        }
+
+        return parts.length > 0 ? parts : [str];
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        // Bullet list: -, •, *
+        const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/);
+        if (bulletMatch) {
+            if (listType !== 'ul') flushList();
+            listType = 'ul';
+            listItems.push(<li key={`li-${i}`}>{formatInline(bulletMatch[1])}</li>);
+            continue;
+        }
+
+        // Numbered list: 1. 2. 3.
+        const numMatch = trimmed.match(/^\d+\.\s+(.+)/);
+        if (numMatch) {
+            if (listType !== 'ol') flushList();
+            listType = 'ol';
+            listItems.push(<li key={`li-${i}`}>{formatInline(numMatch[1])}</li>);
+            continue;
+        }
+
+        flushList();
+
+        if (trimmed === '') {
+            elements.push(<div key={`br-${i}`} className="h-1.5" />);
+        } else {
+            elements.push(<span key={`p-${i}`} className="block">{formatInline(trimmed)}</span>);
+        }
+    }
+
+    flushList();
+    return elements;
+}
+
 export default function SynBot() {
     const { user } = useAuth();
     const { activeGroup, expenses, contributions } = useGroupData();
@@ -178,11 +264,11 @@ export default function SynBot() {
                                         animate={{ opacity: 1, y: 0 }}
                                         className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                                     >
-                                        <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
-                                            ? 'bg-accent text-white rounded-br-md'
+                                        <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${msg.role === 'user'
+                                            ? 'bg-accent text-white rounded-br-md whitespace-pre-wrap'
                                             : 'bg-dark-800/80 text-dark-200 rounded-bl-md border border-glass-border'
                                             }`}>
-                                            {msg.text}
+                                            {msg.role === 'user' ? msg.text : renderMarkdown(msg.text)}
                                         </div>
                                     </motion.div>
                                 ))}
