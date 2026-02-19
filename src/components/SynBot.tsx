@@ -31,8 +31,8 @@ function renderMarkdown(text: string): React.ReactNode[] {
 
     const formatInline = (str: string): React.ReactNode[] => {
         const parts: React.ReactNode[] = [];
-        // Regex: **bold**, *italic*, `code`
-        const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+        // Regex: **bold**, *italic*, `code`, [link](url)
+        const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|\[(.+?)\]\((.+?)\))/g;
         let lastIndex = 0;
         let match;
 
@@ -40,12 +40,24 @@ function renderMarkdown(text: string): React.ReactNode[] {
             if (match.index > lastIndex) {
                 parts.push(str.slice(lastIndex, match.index));
             }
-            if (match[2]) {
+            if (match[2]) { // **bold**
                 parts.push(<strong key={`b-${match.index}`} className="font-semibold text-white">{match[2]}</strong>);
-            } else if (match[3]) {
+            } else if (match[3]) { // *italic*
                 parts.push(<em key={`i-${match.index}`} className="italic text-dark-300">{match[3]}</em>);
-            } else if (match[4]) {
+            } else if (match[4]) { // `code`
                 parts.push(<code key={`c-${match.index}`} className="bg-dark-700/60 px-1 py-0.5 rounded text-accent text-[11px]">{match[4]}</code>);
+            } else if (match[5] && match[6]) { // [text](url)
+                parts.push(
+                    <a
+                        key={`a-${match.index}`}
+                        href={match[6]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent hover:underline decoration-accent/50 underline-offset-2"
+                    >
+                        {match[5]}
+                    </a>
+                );
             }
             lastIndex = regex.lastIndex;
         }

@@ -143,7 +143,7 @@ SynSplit is a PWA (Progressive Web App) for splitting expenses among groups.
 ### 2. Add Expense Page ("/add")
 **How to add an expense:**
 1. Tap the "+" button from Dashboard or bottom nav.
-2. Select the **group** from dropdown.
+2. Select the **group** from dropdown (if you have multiple groups).
 3. Enter **amount** (required).
 4. Enter **description** (required).
 5. Select **category**: food, rent, gas, internet, travel, groceries, entertainment, utilities, others.
