@@ -77,4 +77,4 @@ src/
 
 ---
 
-Developed by [https://synsplit.sayanmandal.in](https://synsplit.sayanmandal.in/)
+Developed by [Sayan Mandal](https://sayanmandal.in/)
