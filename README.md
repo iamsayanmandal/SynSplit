@@ -6,16 +6,21 @@ A modern, lightweight expense-splitting app built with React and Firebase. Split
 
 ## Features
 
-- **Google Sign-In** — one-tap authentication
--  **Groups** — create groups, add members by Gmail, admin-based management
--  **Direct Mode** — track who paid and split equally
--  **Pool Mode** — monthly pool fund with contributions
--  **Settle Tab** — per-member breakdown, who owes whom, one-tap settle
--  **Expense Management** — add, edit (48hr window), delete with confirmation
--  **Search** — filter expenses by description or category
--  **Admin Controls** — edit group name, remove members, control expense permissions
--  **History** — pool contribution and settlement history
--  **Premium UI** — dark glassmorphism, smooth animations, mobile-first
+- **Expense Splitting** — Pool and Direct modes supporting equal, unequal, percentage, and share-based splits
+- **SynBot AI** — intelligent chatbot powered by Google Gemini for deep spending insights
+- **Interactive Analytics** — visualize financial data using pie charts, bar graphs, and calendar heatmaps
+- **AI Predictions** — proactive spending forecasts and personalized savings suggestions
+- **Recurring Expenses** — automate your monthly tracking with an auto-add feature
+- **Debt Optimization** — streamline repayment paths and easily track settlements
+- **Push Notifications** — real-time mobile alerts powered by Firebase Cloud Messaging
+- **PDF Export** — generate and download comprehensive expense reports instantly
+- **Location Tagging** — attach GPS coordinates to expenses to track where you spend
+- **Google Sign-In** — seamless and secure one-tap authentication
+- **Offline Support** — full functionality without internet access as a Progressive Web App (PWA)
+- **Real-Time Sync** — instant data updates across all your devices using Firestore
+- **Premium UI** — modern dark mode glassmorphism interface featuring smooth animations
+- **Group Management** — create groups and oversee them with robust admin controls
+- **Member Permissions** — customizable access and role settings specifically for pool mode
 
 ## Tech Stack
 
