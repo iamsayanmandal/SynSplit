@@ -24,13 +24,19 @@ A modern, lightweight expense-splitting app built with React and Firebase. Split
 
 ## Tech Stack
 
-- **Frontend:** React 18, TypeScript, Vite
-- **Styling:** Tailwind CSS
-- **Backend:** Firebase (Firestore, Auth, Hosting)
-- **Animations:** Framer Motion
-- **Icons:** Lucide React
-- **AI (coming soon):** Gemini API
-
+- **React 18** — UI framework with lazy loading and code splitting
+- **TypeScript** — type-safe development
+- **Firebase Auth** — Google Sign-In authentication
+- **Cloud Firestore** — real-time NoSQL database
+- **Firebase Cloud Messaging** — push notifications
+- **Google Gemini API** — AI chatbot and spending predictions
+- **Vite** — fast build tool and dev server
+- **Tailwind CSS** — utility-first styling
+- **Framer Motion** — page transitions and micro-animations
+- **Recharts** — interactive charts and graphs
+- **jsPDF** — PDF report generation
+- **date-fns** — date formatting and calculations
+- 
 ## Getting Started
 
 ### Prerequisites
