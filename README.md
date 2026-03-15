@@ -36,7 +36,7 @@ A modern, lightweight expense-splitting app built with React and Firebase. Split
 - **Recharts** — interactive charts and graphs
 - **jsPDF** — PDF report generation
 - **date-fns** — date formatting and calculations
-- 
+  
 ## Getting Started
 
 ### Prerequisites
