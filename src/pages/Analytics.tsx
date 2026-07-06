@@ -29,7 +29,25 @@ export default function Analytics() {
     // ─── Leaflet Map States & Refs ───
     const mapRef = useRef<HTMLDivElement>(null);
     const mapInstance = useRef<any>(null);
-    // Preloaded Leaflet script on HTML head means Leaflet is always available
+    const [leafletReady, setLeafletReady] = useState(() => typeof (window as any).L !== 'undefined');
+
+    // Poll for Leaflet presence on window
+    useEffect(() => {
+        if (tab !== 'map') return;
+        if (typeof (window as any).L !== 'undefined') {
+            setLeafletReady(true);
+            return;
+        }
+
+        let intervalId = setInterval(() => {
+            if (typeof (window as any).L !== 'undefined') {
+                setLeafletReady(true);
+                clearInterval(intervalId);
+            }
+        }, 50);
+
+        return () => clearInterval(intervalId);
+    }, [tab]);
 
     // Geotagged Expenses Filter
     const geoExpenses = useMemo(() => {
@@ -38,7 +56,7 @@ export default function Analytics() {
 
     // Map Initialization
     useEffect(() => {
-        if (tab !== 'map' || !mapRef.current) return;
+        if (tab !== 'map' || !leafletReady || !mapRef.current) return;
 
         // Clean up previous instance and reset the DOM container to prevent already-initialized errors
         if (mapRef.current) {
@@ -123,7 +141,7 @@ export default function Analytics() {
             const bounds = L.latLngBounds(geoExpenses.map(e => [e.location!.lat, e.location!.lng]));
             map.fitBounds(bounds, { padding: [40, 40] });
         }
-    }, [tab, geoExpenses]);
+    }, [tab, leafletReady, geoExpenses]);
 
     // ─── Fetch AI Predictions handler ───
     const fetchAiInsights = async () => {
