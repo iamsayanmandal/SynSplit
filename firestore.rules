@@ -9,7 +9,6 @@ service cloud.firestore {
     }
 
     // Check if user is a member of the group
-    // Safe lookup: checks if doc exists before accessing .data to prevent evaluation errors.
     function isGroupMember(groupId) {
       let groupPath = /databases/$(database)/documents/groups/$(groupId);
       return isAuthenticated() && 
@@ -26,51 +25,103 @@ service cloud.firestore {
               resourceData.createdBy == request.auth.uid;
     }
 
+    // Check if user is the admin (creator) of the group
+    function isGroupAdmin(groupId) {
+      let groupPath = /databases/$(database)/documents/groups/$(groupId);
+      return isAuthenticated() && exists(groupPath) && get(groupPath).data.createdBy == request.auth.uid;
+    }
+
     // ─── Rules ───
 
     // Groups:
     match /groups/{groupId} {
-      // Create: Authenticated users. Validation: user must be in memberUids.
+      // Create: Authenticated users. Validation: user must be in memberUids and be the creator.
       allow create: if isAuthenticated() && 
                     request.resource.data.createdBy == request.auth.uid &&
                     request.auth.uid in request.resource.data.memberUids;
       
       // Read: Split into get and list for query validation
       allow get: if isAuthenticated() && isMemberOfResource(resource.data);
-      // List: Explicitly match the array-contains query (checking both UIDs and Emails)
       allow list: if isAuthenticated() && (
         (resource.data.memberUids != null && request.auth.uid in resource.data.memberUids) ||
         (resource.data.memberEmails != null && request.auth.token.email.lower() in resource.data.memberEmails) ||
         resource.data.createdBy == request.auth.uid
       );
       
-      allow update: if isAuthenticated() && isMemberOfResource(resource.data);
+      // Update: Members can update, but with field-level restrictions.
+      // - createdBy can NEVER be changed.
+      // - members, memberUids, memberEmails, mode, allowMemberExpenses can only be changed by admin.
+      allow update: if isAuthenticated() && isMemberOfResource(resource.data)
+                    && request.resource.data.createdBy == resource.data.createdBy
+                    && (
+                      resource.data.createdBy == request.auth.uid
+                      || (
+                        request.resource.data.members == resource.data.members
+                        && request.resource.data.memberUids == resource.data.memberUids
+                        && request.resource.data.memberEmails == resource.data.memberEmails
+                        && request.resource.data.mode == resource.data.mode
+                        && ((!('allowMemberExpenses' in resource.data) && !('allowMemberExpenses' in request.resource.data)) || request.resource.data.allowMemberExpenses == resource.data.allowMemberExpenses)
+                      )
+                    );
+
+      // Delete: Only the group admin (creator) can delete.
       allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
     }
 
     // Expenses:
     match /expenses/{expenseId} {
       allow read: if isGroupMember(resource.data.groupId);
-      allow create: if isGroupMember(request.resource.data.groupId);
-      allow update, delete: if isGroupMember(resource.data.groupId);
+      allow create: if isGroupMember(request.resource.data.groupId)
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0
+                    && request.resource.data.description is string
+                    && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isGroupMember(resource.data.groupId)
+                    && resource.data.createdBy == request.auth.uid;
+      allow delete: if isGroupMember(resource.data.groupId)
+                    && resource.data.createdBy == request.auth.uid;
     }
 
     // Pool Contributions:
     match /pool_contributions/{contribId} {
-      allow create: if isGroupMember(request.resource.data.groupId);
-      allow read, update, delete: if isGroupMember(resource.data.groupId);
+      allow read: if isGroupMember(resource.data.groupId);
+      allow create: if isGroupMember(request.resource.data.groupId)
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0;
+      // Only creator or group admin can update/delete
+      allow update: if isGroupMember(resource.data.groupId)
+                    && (resource.data.createdBy == request.auth.uid || isGroupAdmin(resource.data.groupId));
+      allow delete: if isGroupMember(resource.data.groupId)
+                    && (resource.data.createdBy == request.auth.uid || isGroupAdmin(resource.data.groupId));
     }
 
     // Settlements:
     match /settlements/{settlementId} {
-      allow create: if isGroupMember(request.resource.data.groupId);
-      allow read, update, delete: if isGroupMember(resource.data.groupId);
+      allow read: if isGroupMember(resource.data.groupId);
+      // Settlement creator must be the fromUser (you can only settle your own debts)
+      allow create: if isGroupMember(request.resource.data.groupId)
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.fromUser == request.auth.uid
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0;
+      // Only creator or group admin can update/delete
+      allow update: if isGroupMember(resource.data.groupId)
+                    && (resource.data.createdBy == request.auth.uid || isGroupAdmin(resource.data.groupId));
+      allow delete: if isGroupMember(resource.data.groupId)
+                    && (resource.data.createdBy == request.auth.uid || isGroupAdmin(resource.data.groupId));
     }
 
     // Recurring Expenses:
     match /recurring_expenses/{recurringId} {
-      allow create: if isGroupMember(request.resource.data.groupId);
-      allow read, update, delete: if isGroupMember(resource.data.groupId);
+      allow read: if isGroupMember(resource.data.groupId);
+      allow create: if isGroupMember(request.resource.data.groupId)
+                    && request.resource.data.createdBy == request.auth.uid;
+      // Only creator or group admin can update/delete
+      allow update: if isGroupMember(resource.data.groupId)
+                    && (resource.data.createdBy == request.auth.uid || isGroupAdmin(resource.data.groupId));
+      allow delete: if isGroupMember(resource.data.groupId)
+                    && (resource.data.createdBy == request.auth.uid || isGroupAdmin(resource.data.groupId));
     }
 
     // Notifications: 
@@ -78,21 +129,21 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       
       allow create: if isAuthenticated() && (
-        // Case 1: Self notification
         request.resource.data.userId == request.auth.uid || 
-        // Case 2: Group notification (must be member of group)
         (request.resource.data.groupId != null && isGroupMember(request.resource.data.groupId))
       );
 
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
-    // Users: Private data
+    // Users: Private FCM token data
     match /users/{userId}/fcmTokens/{tokenId} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
     
-    // Global User Profiles (Public Read, Private Write)
+    // Global User Profiles
+    // NOTE: Broad read access is intentional — required for member lookup by email (getUserByEmail).
+    // The stored fields (name, email, photo, lastLogin) are considered low-sensitivity.
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && request.auth.uid == userId;

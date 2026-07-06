@@ -46,8 +46,15 @@ function calculatePercentageSplit(
     percentages: Record<string, number>
 ): Record<string, number> {
     const result: Record<string, number> = {};
-    for (const [uid, pct] of Object.entries(percentages)) {
-        result[uid] = Math.round((amount * pct) / 100 * 100) / 100;
+    const uids = Object.keys(percentages);
+    for (const uid of uids) {
+        result[uid] = Math.round((amount * percentages[uid]) / 100 * 100) / 100;
+    }
+    // Redistribute rounding remainder to first member
+    const total = Object.values(result).reduce((a, b) => a + b, 0);
+    const diff = Math.round((amount - total) * 100) / 100;
+    if (diff !== 0 && uids.length > 0) {
+        result[uids[0]] = Math.round((result[uids[0]] + diff) * 100) / 100;
     }
     return result;
 }
@@ -59,8 +66,15 @@ function calculateShareSplit(
     const totalShares = Object.values(shares).reduce((a, b) => a + b, 0);
     if (totalShares === 0) return {};
     const result: Record<string, number> = {};
-    for (const [uid, share] of Object.entries(shares)) {
-        result[uid] = Math.round((amount * share) / totalShares * 100) / 100;
+    const uids = Object.keys(shares);
+    for (const uid of uids) {
+        result[uid] = Math.round((amount * shares[uid]) / totalShares * 100) / 100;
+    }
+    // Redistribute rounding remainder to first member
+    const total = Object.values(result).reduce((a, b) => a + b, 0);
+    const diff = Math.round((amount - total) * 100) / 100;
+    if (diff !== 0 && uids.length > 0) {
+        result[uids[0]] = Math.round((result[uids[0]] + diff) * 100) / 100;
     }
     return result;
 }
@@ -151,4 +165,11 @@ export function calculateDebts(balances: BalanceSummary[]): Debt[] {
     }
 
     return debts;
+}
+
+/**
+ * Sanitize user input by stripping any HTML/script tags.
+ */
+export function sanitizeInput(input: string): string {
+    return input.replace(/<[^>]*>/g, '').trim();
 }

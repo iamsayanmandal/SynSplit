@@ -33,16 +33,16 @@ function calculateShare(expense: ExpenseData, userId: string): number {
 
     switch (splitType) {
         case 'equal':
-            return amount / usedBy.length;
+            return Math.round((amount / usedBy.length) * 100) / 100;
         case 'unequal':
             return (splitDetails && splitDetails[userId]) ? splitDetails[userId] : 0;
         case 'percentage':
-            return (amount * ((splitDetails && splitDetails[userId]) ? splitDetails[userId] : 0)) / 100;
+            return Math.round((amount * ((splitDetails && splitDetails[userId]) ? splitDetails[userId] : 0)) / 100 * 100) / 100;
         case 'share': {
             const details = splitDetails || {};
             const totalShares = Object.values(details).reduce((a: number, b: number) => a + b, 0);
             const userShare = details[userId] || 0;
-            return totalShares ? (amount * userShare) / totalShares : 0;
+            return totalShares ? Math.round((amount * userShare) / totalShares * 100) / 100 : 0;
         }
         default:
             return 0;
@@ -250,3 +250,109 @@ export const onSettlementCreate = functions.firestore
         const settlement = snap.data() as SettlementData;
         if (settlement) await sendSettlementNotification(settlement);
     });
+
+// ─── Gemini AI Proxy ───
+
+// Rate limiter: track calls per user
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 10; // max calls per window
+const RATE_WINDOW_MS = 60 * 1000; // 1 minute
+
+export const askGeminiProxy = functions.https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    const uid = context.auth.uid;
+
+    // 2. Rate limiting
+    const now = Date.now();
+    const userRate = rateLimitMap.get(uid);
+    if (userRate) {
+        if (now < userRate.resetAt) {
+            if (userRate.count >= RATE_LIMIT) {
+                throw new functions.https.HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment.');
+            }
+            userRate.count++;
+        } else {
+            rateLimitMap.set(uid, { count: 1, resetAt: now + RATE_WINDOW_MS });
+        }
+    } else {
+        rateLimitMap.set(uid, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    }
+
+    // 3. Input validation
+    const { prompt, systemInstruction, history } = data;
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Prompt is required.');
+    }
+    if (prompt.length > 10000) {
+        throw new functions.https.HttpsError('invalid-argument', 'Prompt too long.');
+    }
+
+    // 4. Get API key from environment
+    const apiKey = process.env.GEMINI_API_KEY || (functions.config().gemini?.key);
+    if (!apiKey) {
+        console.error('[GEMINI] API key not configured.');
+        throw new functions.https.HttpsError('internal', 'AI service not configured.');
+    }
+
+    // 5. Call Gemini API
+    const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+    const body: Record<string, unknown> = {
+        contents: [
+            ...(history || []),
+            { role: 'user', parts: [{ text: prompt }] },
+        ],
+        generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+            topP: 0.95,
+        },
+        safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        ],
+    };
+
+    if (systemInstruction) {
+        body.system_instruction = {
+            parts: [{ text: systemInstruction }],
+        };
+    }
+
+    try {
+        const response = await fetch(`${API_URL}?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            console.error('[GEMINI] API error:', response.status);
+            throw new functions.https.HttpsError('internal', 'AI service error.');
+        }
+
+        const result = (await response.json()) as any;
+        const candidate = result?.candidates?.[0];
+
+        if (candidate?.finishReason === 'SAFETY') {
+            return { text: "I couldn't generate a response for this query. Please try rephrasing your question." };
+        }
+
+        const text = candidate?.content?.parts?.[0]?.text;
+        if (!text) {
+            return { text: "I couldn't generate insights right now. Please try again in a moment." };
+        }
+
+        return { text };
+    } catch (error: unknown) {
+        if (error instanceof functions.https.HttpsError) throw error;
+        console.error('[GEMINI] Unexpected error:', error);
+        throw new functions.https.HttpsError('internal', 'AI service unavailable.');
+    }
+});

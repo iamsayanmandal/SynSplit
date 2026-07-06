@@ -25,6 +25,7 @@ export default function Layout() {
                         exit={{ opacity: 0, y: -8 }}
                         transition={{ duration: 0.2, ease: 'easeOut' }}
                         className="h-full"
+                        style={{ backfaceVisibility: 'hidden', transform: 'translate3d(0,0,0)' }}
                     >
                         <Outlet />
                     </motion.div>
@@ -36,6 +37,23 @@ export default function Layout() {
 
             <nav className="fixed bottom-0 left-0 right-0 z-50">
                 <div className="bg-dark-900/80 backdrop-blur-xl border-t border-glass-border">
+                    <div className="text-center py-1 flex items-center justify-center gap-2">
+                        <a
+                            href="https://sayanmandal.in"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[9px] text-accent-light/60 hover:text-accent-light transition-colors underline underline-offset-2 decoration-accent-light/30"
+                        >
+                            Developed by Sayan Mandal
+                        </a>
+                        <span className="text-[9px] text-dark-600">•</span>
+                        <NavLink
+                            to="/privacy"
+                            className="text-[9px] text-dark-400 hover:text-accent-light transition-colors underline underline-offset-2 decoration-dark-600"
+                        >
+                            Privacy Policy
+                        </NavLink>
+                    </div>
                     <div className="max-w-lg mx-auto flex items-center justify-around px-2 py-2">
                         {navItems.map((item) => (
                             <NavLink

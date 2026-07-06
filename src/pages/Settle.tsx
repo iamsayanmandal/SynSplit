@@ -19,7 +19,7 @@ export default function Settle() {
     const [showSettleHistory, setShowSettleHistory] = useState(false);
 
     const getMemberName = (uid: string) => {
-        if (uid === 'pool') return '💰 Pool';
+        if (uid === 'pool') return 'Pool';
         if (uid === user?.uid) return 'You';
         return activeGroup?.members.find((m) => m.uid === uid)?.name || uid;
     };
@@ -80,12 +80,13 @@ export default function Settle() {
     }, [debts, user]);
 
     const handleSettle = async () => {
-        if (!settlingDebt || !activeGroup?.id) return;
+        if (!settlingDebt || !activeGroup?.id || !user) return;
         await addSettlement({
             groupId: activeGroup.id,
             fromUser: settlingDebt.from,
             toUser: settlingDebt.to,
             amount: settlingDebt.amount,
+            createdBy: user.uid,
             createdAt: Date.now(),
         });
         setSettled(true);

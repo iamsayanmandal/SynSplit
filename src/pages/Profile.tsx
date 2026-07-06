@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight } from 'lucide-react';
+import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight, ExternalLink, FileText, Shield, Coins, CreditCard } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { deleteGroup, addMemberToGroup, addPoolContribution, updateGroupName, removeMemberFromGroup, toggleAllowMemberExpenses, getUserByEmail } from '../lib/firestore';
+import { sanitizeInput } from '../lib/splitCalculator';
 import CreateGroup from '../components/CreateGroup';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Member } from '../types';
@@ -18,6 +19,7 @@ export default function Profile() {
 
     const [showCreate, setShowCreate] = useState(false);
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+    const [showTerms, setShowTerms] = useState(false);
 
     // Add member state
     const [addingMemberTo, setAddingMemberTo] = useState<string | null>(null);
@@ -113,8 +115,9 @@ export default function Profile() {
     };
 
     const handleSaveName = async (groupId: string) => {
-        if (!editNameValue.trim()) return;
-        await updateGroupName(groupId, editNameValue.trim());
+        const sanitized = sanitizeInput(editNameValue);
+        if (!sanitized) return;
+        await updateGroupName(groupId, sanitized);
         setEditingNameFor(null);
     };
 
@@ -123,20 +126,22 @@ export default function Profile() {
     };
 
     const handleAddMember = async () => {
-        if (!memberName.trim() || !memberEmail.trim() || !addingMemberTo) return;
+        const sanitizedName = sanitizeInput(memberName);
+        const trimmedEmail = memberEmail.trim();
+        if (!sanitizedName || !trimmedEmail || !addingMemberTo) return;
         const group = groups.find((g) => g.id === addingMemberTo);
         if (!group) return;
         setAddingMember(true);
         try {
             // DIRECT ADD: Seamlessly add by email even if user doesn't exist yet
-            const safeId = memberEmail.trim().replace(/[^a-zA-Z0-9]/g, '_');
+            const safeId = trimmedEmail.replace(/[^a-zA-Z0-9]/g, '_');
 
             // Optional: Try to link to real user if they exist
-            const realUser = await getUserByEmail(memberEmail.trim());
+            const realUser = await getUserByEmail(trimmedEmail);
 
             const memberToAdd: Member = realUser || {
                 uid: `invite_${safeId}`,
-                name: memberName.trim(),
+                name: sanitizedName,
                 email: memberEmail.trim(),
                 photoURL: null
             };
@@ -175,6 +180,7 @@ export default function Profile() {
                 userId: poolForMember, // Use selected member instead of always current user
                 amount,
                 month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+                createdBy: user.uid,
                 createdAt: Date.now(),
             });
             setPoolAmount('');
@@ -249,7 +255,11 @@ export default function Profile() {
                                     <div className="p-3.5 flex items-center gap-3">
                                         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setActiveGroupId(g.id); toggleExpand(g.id); }}>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-base">{g.mode === 'pool' ? '💰' : '💳'}</span>
+                                                {g.mode === 'pool' ? (
+                                                    <Coins className="w-4 h-4 text-accent-light flex-shrink-0" />
+                                                ) : (
+                                                    <CreditCard className="w-4 h-4 text-success-light flex-shrink-0" />
+                                                )}
                                                 {isEditingName ? (
                                                     <div className="flex items-center gap-1.5 flex-1" onClick={(e) => e.stopPropagation()}>
                                                         <input type="text" value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)}
@@ -385,8 +395,73 @@ export default function Profile() {
                 )}
             </motion.div>
 
-            {/* Sign Out */}
+            {/* Feedback & Suggestions */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="mt-5">
+                <a
+                    href="https://forms.gle/fRdrU42JVmUbKTsr8"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-accent/10 to-purple-600/10 border border-accent/20 text-accent-light font-medium text-sm flex items-center justify-center gap-2 hover:from-accent/20 hover:to-purple-600/20 transition-all active:scale-[0.98]"
+                >
+                    <ExternalLink className="w-4 h-4" />
+                    Feedback & Suggestions
+                </a>
+            </motion.div>
+
+            {/* Terms & Conditions */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="mt-3">
+                <button
+                    onClick={() => setShowTerms(!showTerms)}
+                    className="w-full py-3 rounded-xl bg-dark-800/50 border border-glass-border text-dark-300 font-medium text-sm flex items-center justify-center gap-2 hover:bg-dark-800 transition-all"
+                >
+                    <FileText className="w-4 h-4" />
+                    Terms & Conditions
+                    <ChevronDown className={`w-4 h-4 transition-transform ${showTerms ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence>
+                    {showTerms && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                        >
+                            <div className="glass-card p-4 mt-2 space-y-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Shield className="w-5 h-5 text-accent-light" />
+                                    <h3 className="text-sm font-bold text-white">Terms & Conditions</h3>
+                                </div>
+                                <div className="text-[11px] text-dark-300 space-y-2.5 leading-relaxed">
+                                    <p>
+                                        <span className="text-white font-medium">1. Nature of Service:</span> SynSplit is a free, personal project developed by Sayan Mandal. It is provided "as-is" with no warranties of any kind.
+                                    </p>
+                                    <p>
+                                        <span className="text-white font-medium">2. Data Usage:</span> No user data will be sold, shared, or used for commercial purposes. Data may be used solely to monitor active users and improve the application.
+                                    </p>
+                                    <p>
+                                        <span className="text-white font-medium">3. User Responsibility:</span> Users are solely responsible for the accuracy of their expense data. The developer (Sayan Mandal) is not liable for any financial discrepancies, data loss, or decisions made based on this application.
+                                    </p>
+                                    <p>
+                                        <span className="text-white font-medium">4. Service Availability:</span> The developer reserves the right to block any user, modify, or shut down this project at any time without prior notice.
+                                    </p>
+                                    <p>
+                                        <span className="text-white font-medium">5. Changes to Terms:</span> These Terms & Conditions may be updated at any time. Continued use of SynSplit constitutes acceptance of the current and any future terms.
+                                    </p>
+                                    <p>
+                                        <span className="text-white font-medium">6. Limitation of Liability:</span> Sayan Mandal and any associated parties are not responsible for any direct, indirect, or consequential damages arising from the use of this application.
+                                    </p>
+                                    <p className="text-dark-500 pt-1 border-t border-dark-700/50">
+                                        By using SynSplit, you agree to all the above terms and any future modifications.
+                                    </p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </motion.div>
+
+            {/* Sign Out */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mt-3">
                 <button onClick={handleSignOut}
                     className="w-full py-3 rounded-xl border border-danger/30 text-danger-light font-medium text-sm flex items-center justify-center gap-2 hover:bg-danger/10 transition-all">
                     <LogOut className="w-4 h-4" />

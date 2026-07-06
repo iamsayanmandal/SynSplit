@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Plus, Download, Search, MapPin, Pencil, Check, FileText } from 'lucide-react';
+import { Trash2, Plus, Download, Search, MapPin, Pencil, Check, FileText, Coins } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses } from '../hooks/hooks';
@@ -41,7 +41,7 @@ export default function Expenses() {
     const [customEnd, setCustomEnd] = useState('');
     const [memberFilter, setMemberFilter] = useState<string>('all');
 
-    // Identify and fetch unknown users
+    // Identify and fetch unknown users (including creators and split participants)
     useEffect(() => {
         if (!activeGroup || expenses.length === 0) return;
 
@@ -49,9 +49,20 @@ export default function Expenses() {
         const unknownUids = new Set<string>();
 
         expenses.forEach(exp => {
+            // Check paidBy
             if (exp.paidBy !== 'pool' && !currentMemberIds.has(exp.paidBy) && !resolvedUsers[exp.paidBy]) {
                 unknownUids.add(exp.paidBy);
             }
+            // Check createdBy
+            if (!currentMemberIds.has(exp.createdBy) && !resolvedUsers[exp.createdBy]) {
+                unknownUids.add(exp.createdBy);
+            }
+            // Check usedBy
+            exp.usedBy.forEach(uid => {
+                if (!currentMemberIds.has(uid) && !resolvedUsers[uid]) {
+                    unknownUids.add(uid);
+                }
+            });
         });
 
         if (unknownUids.size > 0) {
@@ -62,7 +73,15 @@ export default function Expenses() {
                     if (profile) {
                         newResolved[uid] = profile;
                     } else {
-                        newResolved[uid] = { name: 'Former Member', uid }; // Fallback if user deleted
+                        // Fallback: Check if it's an invite UID format
+                        if (uid.startsWith('invite_')) {
+                            // Try to clean name from invite UID: invite_sayan_gmail_com -> Sayan
+                            const raw = uid.substring(7).split('_')[0];
+                            const clean = raw.charAt(0).toUpperCase() + raw.slice(1);
+                            newResolved[uid] = { name: clean, uid };
+                        } else {
+                            newResolved[uid] = { name: 'Former Member', uid };
+                        }
                     }
                 }));
 
@@ -167,7 +186,7 @@ export default function Expenses() {
     };
 
     const getMemberName = (uid: string, expense?: Expense) => {
-        if (uid === 'pool') return '💰 Pool';
+        if (uid === 'pool') return 'Pool';
         // 1. Current Member
         const member = activeGroup?.members.find((m) => m.uid === uid);
         if (member) return member.name;
@@ -459,41 +478,73 @@ export default function Expenses() {
                         return (
                             <motion.div
                                 key={exp.id}
-                                initial={{ opacity: 0, y: 6 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.02 }}
+                                initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{ delay: i * 0.03, type: 'spring', stiffness: 300, damping: 25 }}
+                                whileTap={{ scale: 0.98 }}
                                 className="glass-card p-3.5"
                             >
                                 {/* Main row */}
                                 <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                                         style={{ backgroundColor: cat.color + '20' }}>
-                                        {cat.emoji}
+                                        <cat.icon className="w-4.5 h-4.5" style={{ color: cat.color }} />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-medium text-white truncate">{exp.description}</p>
-                                        <p className="text-[11px] text-dark-400 mt-0.5">
-                                            {exp.paidBy === 'pool' ? '💰 Pool' : `${payerName}`} · {format(new Date(exp.createdAt), 'dd MMM')}
+                                        <p className="text-[11px] text-dark-500 mt-0.5">
+                                            {format(new Date(exp.createdAt), 'dd MMM yyyy · h:mm a')}
                                         </p>
                                     </div>
                                     <p className="text-sm font-bold text-white flex-shrink-0">₹{exp.amount.toLocaleString('en-IN')}</p>
                                 </div>
 
+                                {/* Payer & Split Info Row */}
+                                <div className="mt-2.5 pt-2 border-t border-dark-800/40 flex flex-col gap-1 text-[11px] text-dark-400">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className="text-dark-500">Paid by:</span>
+                                            {exp.paidBy === 'pool' ? (
+                                                <span className="w-4 h-4 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
+                                                    <Coins className="w-2 h-2 text-accent-light" />
+                                                </span>
+                                            ) : getMemberPhoto(exp.paidBy, exp) ? (
+                                                <img src={getMemberPhoto(exp.paidBy, exp)!} alt="" className="w-4 h-4 rounded-full border border-dark-700 object-cover" />
+                                            ) : (
+                                                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payerName)}`} alt="" className="w-4 h-4 rounded-full border border-dark-700" />
+                                            )}
+                                            <span className="font-semibold text-white truncate">{payerName}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                            <span className="text-dark-500">Split:</span>
+                                            <div className="flex -space-x-1.5 overflow-hidden">
+                                                {exp.usedBy.map((uid) => {
+                                                    const name = getMemberName(uid, exp);
+                                                    const photo = getMemberPhoto(uid, exp);
+                                                    return photo ? (
+                                                        <img key={uid} src={photo} alt={name} title={name} className="inline-block w-4 h-4 rounded-full border border-dark-900 object-cover" />
+                                                    ) : (
+                                                        <img key={uid} src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`} alt={name} title={name} className="inline-block w-4 h-4 rounded-full border border-dark-900" />
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Footer: creator + actions */}
-                                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-dark-800/40">
+                                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-dark-800/30">
                                     <div className="flex items-center gap-1.5">
                                         {creatorPhoto ? (
-                                            <img src={creatorPhoto} alt="" className="w-3.5 h-3.5 rounded-full" />
+                                            <img src={creatorPhoto} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />
                                         ) : (
-                                            <div className="w-3.5 h-3.5 rounded-full bg-dark-700 flex items-center justify-center">
-                                                <span className="text-[7px] text-dark-300">{creatorName.charAt(0)}</span>
-                                            </div>
+                                            <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(creatorName)}`} alt="" className="w-3.5 h-3.5 rounded-full" />
                                         )}
                                         <span className="text-[10px] text-dark-500">
-                                            {creatorName.split(' ')[0]}
+                                            Added by: <span className="text-dark-400 font-medium">{creatorName.split(' ')[0]}</span>
                                         </span>
                                         {wasEdited && (
-                                            <span className="text-[10px] text-dark-600">
+                                            <span className="text-[9px] text-dark-600">
                                                 · edited {formatDistanceToNow(new Date(exp.editedAt!), { addSuffix: true })}
                                             </span>
                                         )}
@@ -527,18 +578,26 @@ export default function Expenses() {
                 </div>
             )}
 
-            {/* Edit Modal */}
+            {/* Edit Modal — Centered Popup */}
             <AnimatePresence>
                 {editingExpense && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setEditingExpense(null)}>
-                        <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="bg-dark-900 rounded-t-3xl sm:rounded-3xl p-6 w-full max-w-md border border-glass-border"
+                        className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setEditingExpense(null)}>
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                            className="bg-dark-900 rounded-2xl w-full max-w-sm border border-glass-border shadow-2xl flex flex-col max-h-[85vh]"
                             onClick={(e) => e.stopPropagation()}>
-                            <div className="w-10 h-1 rounded-full bg-dark-600 mx-auto mb-4 sm:hidden" />
-                            <h2 className="text-lg font-bold text-white mb-4">Edit Expense</h2>
-                            <div className="space-y-3 mb-4">
+
+                            {/* Header — pinned */}
+                            <div className="px-5 pt-5 pb-3 border-b border-dark-800/50 flex-shrink-0">
+                                <h2 className="text-lg font-bold text-white">Edit Expense</h2>
+                            </div>
+
+                            {/* Scrollable Content */}
+                            <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1 min-h-0">
                                 <div className="flex items-center gap-2">
                                     <span className="text-xl font-light text-dark-400">₹</span>
                                     <input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)}
@@ -552,7 +611,7 @@ export default function Expenses() {
                                             className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all ${editCategory === key
                                                 ? 'border-accent bg-accent/10 text-white' : 'border-transparent bg-dark-800/50 text-dark-400'
                                                 }`}>
-                                            <span className="text-base">{meta.emoji}</span>
+                                            <meta.icon className="w-4 h-4" style={{ color: meta.color }} />
                                             <span className="text-[11px] font-medium truncate">{meta.label}</span>
                                         </button>
                                     ))}
@@ -567,7 +626,9 @@ export default function Expenses() {
                                     </a>
                                 )}
                             </div>
-                            <div className="flex gap-3">
+
+                            {/* Buttons — pinned at bottom */}
+                            <div className="px-5 pb-5 pt-3 border-t border-dark-800/50 flex gap-3 flex-shrink-0">
                                 <button onClick={() => setEditingExpense(null)} className="btn-ghost flex-1 text-sm">Cancel</button>
                                 <button onClick={handleSaveEdit} disabled={editSaving || !editAmount || parseFloat(editAmount) <= 0}
                                     className="btn-primary flex-1 text-sm flex items-center justify-center gap-1.5">

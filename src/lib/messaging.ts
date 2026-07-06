@@ -3,7 +3,7 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { messaging, db } from '../firebase';
 
 // Web Push Certificate Key pair from Firebase Console
-const VAPID_KEY = 'BIj59IOmlAiBWwEWlyJU0tNFbPLlb-Ggsv8mFjUSarbM-1tydWsTqIVVeCzM7zJItJkhtMREqriWiCRA280rRtQ';
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || '';
 
 export async function requestPermissionAndSaveToken(userId: string) {
     try {
@@ -28,7 +28,11 @@ export async function requestPermissionAndSaveToken(userId: string) {
         } else {
             console.log('Unable to get permission to notify.');
         }
-    } catch (error) {
-        console.error('An error occurred while retrieving token. ', error);
+    } catch (error: any) {
+        if (error?.message?.includes('Installations') || error?.message?.includes('PERMISSION_DENIED')) {
+            console.warn('[FCM] Push notification token generation is unavailable. If you want push notifications, please enable the "Firebase Installations API" in your Google Cloud Console for this API key.');
+        } else {
+            console.error('[FCM] Error retrieving token:', error);
+        }
     }
 }

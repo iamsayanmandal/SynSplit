@@ -13,16 +13,18 @@ export type ExpenseCategory =
     | 'utilities'
     | 'others';
 
-export const CATEGORY_META: Record<ExpenseCategory, { label: string; emoji: string; color: string }> = {
-    food: { label: 'Food', emoji: '🍕', color: '#f97316' },
-    rent: { label: 'Rent', emoji: '🏠', color: '#6366f1' },
-    gas: { label: 'Gas', emoji: '⛽', color: '#eab308' },
-    internet: { label: 'Internet', emoji: '📶', color: '#3b82f6' },
-    travel: { label: 'Travel', emoji: '✈️', color: '#8b5cf6' },
-    groceries: { label: 'Groceries', emoji: '🛒', color: '#10b981' },
-    entertainment: { label: 'Entertainment', emoji: '🎬', color: '#ec4899' },
-    utilities: { label: 'Utilities', emoji: '💡', color: '#14b8a6' },
-    others: { label: 'Others', emoji: '📦', color: '#64748b' },
+import { Pizza, Home, Fuel, Wifi, Plane, ShoppingCart, Film, Lightbulb, Package } from 'lucide-react';
+
+export const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: React.ComponentType<any>; color: string }> = {
+    food: { label: 'Food', icon: Pizza, color: '#f97316' },
+    rent: { label: 'Rent', icon: Home, color: '#6366f1' },
+    gas: { label: 'Gas', icon: Fuel, color: '#eab308' },
+    internet: { label: 'Internet', icon: Wifi, color: '#3b82f6' },
+    travel: { label: 'Travel', icon: Plane, color: '#8b5cf6' },
+    groceries: { label: 'Groceries', icon: ShoppingCart, color: '#10b981' },
+    entertainment: { label: 'Entertainment', icon: Film, color: '#ec4899' },
+    utilities: { label: 'Utilities', icon: Lightbulb, color: '#14b8a6' },
+    others: { label: 'Others', icon: Package, color: '#64748b' },
 };
 
 // ─── Core Interfaces ───
@@ -79,6 +81,7 @@ export interface PoolContribution {
     userId: string;
     amount: number;
     month: string;          // "2026-02" format
+    createdBy?: string;
     createdAt: number;
 }
 
@@ -88,6 +91,7 @@ export interface Settlement {
     fromUser: string;       // uid — who pays
     toUser: string;         // uid — who receives
     amount: number;
+    createdBy?: string;
     createdAt: number;
 }
 
@@ -100,7 +104,7 @@ export interface Debt {
 export interface BalanceSummary {
     uid: string;
     name: string;
-    photoURL?: string;
+    photoURL?: string | null;
     totalPaid: number;
     totalUsed: number;
     netBalance: number;     // positive = gets back, negative = owes

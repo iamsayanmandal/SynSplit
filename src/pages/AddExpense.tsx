@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check, Mic, MicOff, MapPin, X } from 'lucide-react';
+import { ArrowLeft, Check, Mic, MicOff, MapPin, X, Coins } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
 import { addExpense } from '../lib/firestore';
 import { parseVoiceExpense } from '../lib/gemini';
+import { sanitizeInput } from '../lib/splitCalculator';
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory, SplitType, ExpenseMode } from '../types';
 
@@ -128,10 +129,11 @@ export default function AddExpense() {
         setLoading(true);
         try {
             const mode: ExpenseMode = selectedGroup?.mode || 'direct';
+            const sanitizedDescription = sanitizeInput(description) || CATEGORY_META[category].label;
             await addExpense({
                 groupId,
                 amount: parseFloat(amount),
-                description: description.trim() || CATEGORY_META[category].label,
+                description: sanitizedDescription,
                 category,
                 mode,
                 paidBy: mode === 'pool' ? 'pool' : paidBy,
@@ -268,13 +270,13 @@ export default function AddExpense() {
                                     <button
                                         key={key}
                                         onClick={() => setCategory(key)}
-                                        className={`p-2.5 rounded-xl border transition-all duration-200 text-center ${category === key
+                                        className={`p-2.5 rounded-xl border transition-all duration-200 flex flex-col items-center justify-center text-center ${category === key
                                             ? 'border-accent bg-accent/10'
                                             : 'border-transparent bg-dark-800/50 hover:border-dark-600'
                                             }`}
                                     >
-                                        <span className="text-lg block">{meta.emoji}</span>
-                                        <span className="text-[10px] font-medium text-dark-300 leading-tight block mt-0.5">{meta.label}</span>
+                                        <meta.icon className="w-5 h-5 block" style={{ color: meta.color }} />
+                                        <span className="text-[10px] font-medium text-dark-300 leading-tight block mt-1.5">{meta.label}</span>
                                     </button>
                                 ))}
                             </div>
@@ -292,7 +294,7 @@ export default function AddExpense() {
                                 {/* Pool mode — no "Paid by" needed */}
                                 {selectedGroup.mode === 'pool' ? (
                                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20">
-                                        <span className="text-base">💰</span>
+                                        <Coins className="w-4 h-4 text-accent-light" />
                                         <p className="text-xs text-accent-light font-medium">Paid from Pool Money</p>
                                     </div>
                                 ) : (

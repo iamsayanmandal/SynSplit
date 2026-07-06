@@ -59,6 +59,12 @@ export default function Login() {
                         </>
                     )}
                 </button>
+
+                <div className="mt-6 text-center">
+                    <a href="/privacy" className="text-[10px] text-dark-500 hover:text-accent-light transition-colors underline underline-offset-2">
+                        Privacy Policy & Terms of Service
+                    </a>
+                </div>
             </motion.div>
         </div>
     );

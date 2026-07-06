@@ -47,6 +47,9 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 1000,
   },
+  esbuild: {
+    pure: ['console.log'],
+  },
   optimizeDeps: {
     exclude: ['lucide-react'],
   },

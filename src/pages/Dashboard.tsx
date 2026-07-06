@@ -1,13 +1,14 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Wallet, Plus, ChevronDown, Clock, ArrowRightLeft } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Plus, ChevronDown, Clock, ArrowRightLeft, Coins } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroupData } from '../contexts/GroupDataContext';
 import { calculateSplit } from '../lib/splitCalculator';
+import { getUserProfile } from '../lib/firestore';
 import { CATEGORY_META } from '../types';
-import type { ExpenseCategory } from '../types';
+import type { ExpenseCategory, Member } from '../types';
 import { format } from 'date-fns';
 
 export default function Dashboard() {
@@ -66,10 +67,74 @@ export default function Dashboard() {
     const recentExpenses = expenses.slice(0, 4);
     const firstName = user?.displayName?.split(' ')[0] || 'there';
 
+    // Resolved users for members not currently in group (e.g. invite UIDs or former members)
+    const [resolvedUsers, setResolvedUsers] = useState<Record<string, Partial<Member>>>({});
+
+    useEffect(() => {
+        if (!activeGroup || expenses.length === 0) return;
+
+        const currentMemberIds = new Set(activeGroup.members.map(m => m.uid));
+        const unknownUids = new Set<string>();
+
+        expenses.forEach(exp => {
+            // Check paidBy
+            if (exp.paidBy !== 'pool' && !currentMemberIds.has(exp.paidBy) && !resolvedUsers[exp.paidBy]) {
+                unknownUids.add(exp.paidBy);
+            }
+            // Check createdBy
+            if (!currentMemberIds.has(exp.createdBy) && !resolvedUsers[exp.createdBy]) {
+                unknownUids.add(exp.createdBy);
+            }
+            // Check usedBy
+            exp.usedBy.forEach(uid => {
+                if (!currentMemberIds.has(uid) && !resolvedUsers[uid]) {
+                    unknownUids.add(uid);
+                }
+            });
+        });
+
+        if (unknownUids.size > 0) {
+            const fetchProfiles = async () => {
+                const newResolved: Record<string, Partial<Member>> = {};
+                await Promise.all(Array.from(unknownUids).map(async (uid) => {
+                    const profile = await getUserProfile(uid);
+                    if (profile) {
+                        newResolved[uid] = profile;
+                    } else {
+                        if (uid.startsWith('invite_')) {
+                            const raw = uid.substring(7).split('_')[0];
+                            const clean = raw.charAt(0).toUpperCase() + raw.slice(1);
+                            newResolved[uid] = { name: clean, uid };
+                        } else {
+                            newResolved[uid] = { name: 'Former Member', uid };
+                        }
+                    }
+                }));
+                setResolvedUsers(prev => ({ ...prev, ...newResolved }));
+            };
+            fetchProfiles();
+        }
+    }, [expenses, activeGroup, resolvedUsers]);
+
     const getMemberName = (uid: string) => {
-        if (uid === 'pool') return '💰 Pool';
+        if (uid === 'pool') return 'Pool';
         if (uid === user?.uid) return 'You';
-        return activeGroup?.members.find((m) => m.uid === uid)?.name || uid;
+        
+        const member = activeGroup?.members.find((m) => m.uid === uid);
+        if (member) return member.name;
+
+        if (resolvedUsers[uid]) return resolvedUsers[uid].name || 'Unknown';
+        return 'Unknown';
+    };
+
+    const getMemberPhoto = (uid: string) => {
+        if (uid === user?.uid) return user.photoURL;
+        
+        const member = activeGroup?.members.find((m) => m.uid === uid);
+        if (member) return member.photoURL;
+
+        if (resolvedUsers[uid]) return resolvedUsers[uid].photoURL;
+        return undefined;
     };
 
     if (loading) {
@@ -112,7 +177,7 @@ export default function Dashboard() {
                         >
                             {groups.map((g) => (
                                 <option key={g.id} value={g.id}>
-                                    {g.mode === 'pool' ? '💰' : '💳'} {g.name} · {g.members.length} members
+                                    [{g.mode === 'pool' ? 'Pool' : 'Direct'}] {g.name} · {g.members.length} members
                                 </option>
                             ))}
                         </select>
@@ -257,19 +322,56 @@ export default function Dashboard() {
                         <div className="space-y-1.5">
                             {recentExpenses.map((exp) => {
                                 const cat = CATEGORY_META[exp.category as ExpenseCategory] || CATEGORY_META.others;
+                                const payerName = getMemberName(exp.paidBy);
+                                const payerPhoto = exp.paidBy === 'pool' ? null : getMemberPhoto(exp.paidBy);
+
+
                                 return (
-                                    <div key={exp.id} className="glass-card px-3.5 py-3 flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
-                                            style={{ backgroundColor: cat.color + '20' }}>
-                                            {cat.emoji}
+                                    <div key={exp.id} className="glass-card px-3.5 py-3 flex flex-col gap-2 relative overflow-hidden">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                                                style={{ backgroundColor: cat.color + '20' }}>
+                                                <cat.icon className="w-4 h-4" style={{ color: cat.color }} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-white truncate">{exp.description}</p>
+                                                <p className="text-[11px] text-dark-500">
+                                                    {format(new Date(exp.createdAt), 'dd MMM · h:mm a')}
+                                                </p>
+                                            </div>
+                                            <p className="text-sm font-bold text-white flex-shrink-0">₹{exp.amount.toLocaleString('en-IN')}</p>
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-white truncate">{exp.description}</p>
-                                            <p className="text-[11px] text-dark-500">
-                                                {format(new Date(exp.createdAt), 'dd MMM, h:mm a')}
-                                            </p>
+
+                                        {/* Payer & Split Info Row */}
+                                        <div className="pt-1.5 border-t border-dark-800/40 flex items-center justify-between gap-2 text-[10px] text-dark-400">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="text-dark-500">Paid by:</span>
+                                                {exp.paidBy === 'pool' ? (
+                                                    <span className="w-3.5 h-3.5 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
+                                                        <Coins className="w-2 h-2 text-accent-light" />
+                                                    </span>
+                                                ) : payerPhoto ? (
+                                                    <img src={payerPhoto} alt="" className="w-3.5 h-3.5 rounded-full border border-dark-700 object-cover" />
+                                                ) : (
+                                                    <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payerName)}`} alt="" className="w-3.5 h-3.5 rounded-full border border-dark-700" />
+                                                )}
+                                                <span className="font-semibold text-white truncate max-w-[80px]">{payerName}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                <span className="text-dark-500">Split:</span>
+                                                <div className="flex -space-x-1.5 overflow-hidden">
+                                                    {exp.usedBy.map((uid) => {
+                                                        const name = getMemberName(uid);
+                                                        const photo = getMemberPhoto(uid);
+                                                        return photo ? (
+                                                            <img key={uid} src={photo} alt={name} title={name} className="inline-block w-3.5 h-3.5 rounded-full border border-dark-900 object-cover" />
+                                                        ) : (
+                                                            <img key={uid} src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`} alt={name} title={name} className="inline-block w-3.5 h-3.5 rounded-full border border-dark-900" />
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <p className="text-sm font-bold text-white flex-shrink-0">₹{exp.amount.toLocaleString('en-IN')}</p>
                                     </div>
                                 );
                             })}

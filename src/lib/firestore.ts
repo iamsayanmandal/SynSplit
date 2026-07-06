@@ -11,6 +11,7 @@ import {
     onSnapshot,
     getDoc,
     getDocs,
+    writeBatch,
     type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -117,6 +118,17 @@ export async function createGroup(
 }
 
 export async function deleteGroup(groupId: string) {
+    // Cascade delete all related documents to prevent orphaned data
+    const relatedCollections = ['expenses', 'settlements', 'pool_contributions', 'recurring_expenses'];
+    for (const col of relatedCollections) {
+        const q = query(collection(db, col), where('groupId', '==', groupId));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+            const batch = writeBatch(db);
+            snapshot.docs.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+        }
+    }
     await deleteDoc(doc(db, 'groups', groupId));
 }
 

@@ -206,10 +206,10 @@ export default function SynBot() {
 
     // Quick prompts
     const quickPrompts = [
-        '💰 Total spending?',
-        '🍕 Food expenses?',
-        '👤 Who paid most?',
-        '📊 Monthly breakdown?',
+        'Total spending?',
+        'Food expenses?',
+        'Who paid most?',
+        'Monthly breakdown?',
     ];
 
     return (
@@ -258,7 +258,7 @@ export default function SynBot() {
                                     </div>
                                     <div>
                                         <h3 className="text-sm font-bold text-white">SynBot</h3>
-                                        <p className="text-[10px] text-dark-400">AI Expense Assistant • Gemini 2.5 Pro</p>
+                                        <p className="text-[10px] text-dark-400">AI Expense Assistant</p>
                                     </div>
                                 </div>
                                 <button onClick={() => setOpen(false)}

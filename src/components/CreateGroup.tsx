@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, CreditCard, Coins } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { createGroup } from '../lib/firestore';
+import { sanitizeInput } from '../lib/splitCalculator';
 import type { ExpenseMode } from '../types';
 
 interface Props {
@@ -17,10 +18,11 @@ export default function CreateGroup({ open, onClose }: Props) {
     const [loading, setLoading] = useState(false);
 
     const handleCreate = async () => {
-        if (!name.trim() || !user) return;
+        const sanitizedName = sanitizeInput(name);
+        if (!sanitizedName || !user) return;
         setLoading(true);
         try {
-            await createGroup(name.trim(), mode, {
+            await createGroup(sanitizedName, mode, {
                 uid: user.uid,
                 name: user.displayName || 'User',
                 email: user.email || '',
@@ -88,7 +90,7 @@ export default function CreateGroup({ open, onClose }: Props) {
                                         : 'border-glass-border bg-dark-800/50 hover:border-dark-500'
                                         }`}
                                 >
-                                    <span className="text-2xl block mb-2">💳</span>
+                                    <CreditCard className="w-6 h-6 text-success-light mb-2" />
                                     <p className="text-sm font-semibold text-white">Direct</p>
                                     <p className="text-xs text-dark-400 mt-1">Pay when you spend</p>
                                 </button>
@@ -99,7 +101,7 @@ export default function CreateGroup({ open, onClose }: Props) {
                                         : 'border-glass-border bg-dark-800/50 hover:border-dark-500'
                                         }`}
                                 >
-                                    <span className="text-2xl block mb-2">💰</span>
+                                    <Coins className="w-6 h-6 text-accent-light mb-2" />
                                     <p className="text-sm font-semibold text-white">Pool Money</p>
                                     <p className="text-xs text-dark-400 mt-1">Monthly pool fund</p>
                                 </button>

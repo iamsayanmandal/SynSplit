@@ -48,7 +48,7 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
                         >
                             Back to Home
                         </button>
-                        {this.state.error && (
+                        {import.meta.env.DEV && this.state.error && (
                             <p className="mt-4 text-dark-600 text-[10px] font-mono break-all">
                                 {this.state.error.message}
                             </p>

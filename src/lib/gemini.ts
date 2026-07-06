@@ -1,10 +1,10 @@
 /**
  * Gemini AI API helper for SynSplit
- * Uses Google Generative AI (Gemini 2.5 Pro) for expense insights, predictions, and voice parsing
+ * Uses Cloud Function proxy for secure server-side API calls
  */
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getApp } from 'firebase/app';
 
 interface GeminiMessage {
     role: 'user' | 'model';
@@ -25,62 +25,26 @@ export async function askGemini(
     systemInstruction?: string,
     history?: GeminiMessage[]
 ): Promise<string> {
-    if (!GEMINI_API_KEY) {
-        throw new Error('Gemini API key not configured');
+    try {
+        const functions = getFunctions(getApp());
+        const askGeminiProxy = httpsCallable<
+            { prompt: string; systemInstruction?: string; history?: GeminiMessage[] },
+            { text: string }
+        >(functions, 'askGeminiProxy');
+
+        const result = await askGeminiProxy({ prompt, systemInstruction, history });
+        return result.data.text;
+    } catch (error: unknown) {
+        const err = error as { code?: string; message?: string };
+        if (err.code === 'functions/resource-exhausted') {
+            return 'You\'re sending messages too quickly. Please wait a moment and try again.';
+        }
+        if (err.code === 'functions/unauthenticated') {
+            return 'Please sign in to use the AI assistant.';
+        }
+        console.error('Gemini proxy error:', err.message);
+        return 'I couldn\'t generate a response right now. Please try again in a moment.';
     }
-
-    const body: Record<string, unknown> = {
-        contents: [
-            ...(history || []),
-            { role: 'user', parts: [{ text: prompt }] },
-        ],
-        generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-            topP: 0.95,
-        },
-        safetySettings: [
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-        ],
-    };
-
-    if (systemInstruction) {
-        body.system_instruction = {
-            parts: [{ text: systemInstruction }],
-        };
-    }
-
-    const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-        const err = await response.text();
-        console.error('Gemini API error:', err);
-        throw new Error(`Gemini API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    // Check for safety filter blocks
-    const candidate = data?.candidates?.[0];
-    if (candidate?.finishReason === 'SAFETY') {
-        console.warn('Gemini response blocked by safety filters:', candidate.safetyRatings);
-        return 'I couldn\'t generate a response for this query. Please try rephrasing your question.';
-    }
-
-    const text = candidate?.content?.parts?.[0]?.text;
-    if (!text) {
-        console.warn('Empty Gemini response. Full payload:', JSON.stringify(data, null, 2));
-        // Return graceful fallback instead of throwing
-        return 'I couldn\'t generate insights right now. Please try again in a moment.';
-    }
-    return text;
 }
 
 /**
@@ -283,11 +247,28 @@ Respond ONLY in this exact JSON format, nothing else:
  * Generate spending predictions using Gemini
  */
 export async function generatePredictions(context: string): Promise<string> {
-    const prompt = `Based on the expense data below, provide 3-4 brief spending predictions or insights for the upcoming month. Be specific with numbers.
+    const prompt = `Based on the expense data below, provide detailed spending insights and predictions for next month.
 
 ${context}
 
-Format as a short bulleted list. Keep it under 100 words total.`;
+Include these sections with emoji headers (use plain text only, NO markdown formatting like ** or * or #):
 
-    return askGemini(prompt, 'You are a financial analyst assistant. Be data-driven and concise.');
+🔮 PREDICTIONS
+- Predicted total spend for next month based on patterns
+- Top 3 category predictions with estimated amounts
+
+📅 UPCOMING EXPECTED
+- List expected recurring or pattern-based expenses with estimated dates and amounts
+
+📊 ANALYSIS
+- Daily average spend
+- Highest spending day of week
+- Month-over-month trend (increasing/decreasing)
+
+💡 TIPS
+- One actionable saving tip based on the data
+
+CRITICAL: Use ONLY plain text. Do NOT use any markdown formatting like **, *, #, or bullet markers like "- ". Use emoji bullets instead (like 🔹 or ▸). Keep total response under 250 words.`;
+
+    return askGemini(prompt, 'You are a financial analyst. Be data-driven, specific with numbers in Indian Rupees (₹). Use plain text with emojis only, never use markdown formatting like ** or * or #.');
 }

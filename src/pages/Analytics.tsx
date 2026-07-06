@@ -1,225 +1,229 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Calendar, Repeat, TrendingUp, TrendingDown, Plus, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Sparkles, Loader } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { BarChart3, Calendar, Map, TrendingUp, MapPin, Sparkles, Loader, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
-import { useGroups, useExpenses, usePoolContributions, useRecurringExpenses } from '../hooks/hooks';
-import { addRecurringExpense, deleteRecurringExpense, toggleRecurringExpense, addExpense, markRecurringAsAdded } from '../lib/firestore';
+import { useGroups, useExpenses, usePoolContributions } from '../hooks/hooks';
 import { CATEGORY_META } from '../types';
-import type { ExpenseCategory, SplitType } from '../types';
+import type { ExpenseCategory } from '../types';
 import { buildExpenseContext, generatePredictions } from '../lib/gemini';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, subDays } from 'date-fns';
 
-type Tab = 'stats' | 'calendar' | 'recurring';
+type Tab = 'stats' | 'calendar' | 'map';
 
 export default function Analytics() {
-    const { user } = useAuth();
+
     const { groups } = useGroups();
     const { activeGroupId } = useActiveGroup();
     const activeGroup = groups.find((g) => g.id === activeGroupId) || null;
     const { expenses } = useExpenses(activeGroupId || undefined);
     const { contributions } = usePoolContributions(activeGroupId || undefined);
-    const { recurringExpenses } = useRecurringExpenses(activeGroupId || undefined);
 
     const [tab, setTab] = useState<Tab>('stats');
     const [calMonth, setCalMonth] = useState(new Date());
 
-    // ─── Recurring add modal state ───
-    const [showAddRecurring, setShowAddRecurring] = useState(false);
-    const [recAmount, setRecAmount] = useState('');
-    const [recDesc, setRecDesc] = useState('');
-    const [recCategory, setRecCategory] = useState<ExpenseCategory>('utilities');
-    const [recDay, setRecDay] = useState('1');
-    const [recSaving, setRecSaving] = useState(false);
-    const [deletingRecurring, setDeletingRecurring] = useState<string | null>(null);
+    // ─── AI Insights State ───
+    const [aiInsights, setAiInsights] = useState<string | null>(null);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState<string | null>(null);
 
-    // AI Predictions state
-    const [predictions, setPredictions] = useState<string | null>(null);
-    const [predictionsLoading, setPredictionsLoading] = useState(false);
+    // ─── Leaflet Map States & Refs ───
+    const mapRef = useRef<HTMLDivElement>(null);
+    const mapInstance = useRef<any>(null);
+    // Preloaded Leaflet script on HTML head means Leaflet is always available
 
-    const categories = Object.entries(CATEGORY_META) as [ExpenseCategory, typeof CATEGORY_META[ExpenseCategory]][];
+    // Geotagged Expenses Filter
+    const geoExpenses = useMemo(() => {
+        return expenses.filter(e => e.location && typeof e.location.lat === 'number' && typeof e.location.lng === 'number');
+    }, [expenses]);
 
-    // ─── STATS ───
-    const totalSpend = expenses.reduce((s, e) => s + e.amount, 0);
-    const totalContributions = contributions.reduce((s, c) => s + c.amount, 0);
+    // Map Initialization
+    useEffect(() => {
+        if (tab !== 'map' || !mapRef.current) return;
 
-    const handleGeneratePredictions = async () => {
+        // Clean up previous instance and reset the DOM container to prevent already-initialized errors
+        if (mapRef.current) {
+            const container = mapRef.current;
+            if ((container as any)._leaflet_id || container.innerHTML !== '') {
+                if (mapInstance.current) {
+                    mapInstance.current.remove();
+                    mapInstance.current = null;
+                }
+                container.innerHTML = '';
+                delete (container as any)._leaflet_id;
+            }
+        }
+
+        const L = (window as any).L;
+        if (!L) return;
+
+        // Center on average coords or fallback to India
+        let center: [number, number] = [20.5937, 78.9629];
+        let zoom = 5;
+
+        if (geoExpenses.length > 0) {
+            const sumLat = geoExpenses.reduce((sum, e) => sum + e.location!.lat, 0);
+            const sumLng = geoExpenses.reduce((sum, e) => sum + e.location!.lng, 0);
+            center = [sumLat / geoExpenses.length, sumLng / geoExpenses.length];
+            zoom = 12;
+        }
+
+        // Create map with Dark Theme CartoDB tiles
+        const map = L.map(mapRef.current, {
+            center: center,
+            zoom: zoom,
+            zoomControl: true,
+            layers: [
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+                    subdomains: 'abcd',
+                    maxZoom: 20
+                })
+            ]
+        });
+
+        mapInstance.current = map;
+
+        // Sizing bug fix for tab/motion containers
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 150);
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 400);
+
+        // Add Circle Markers for each expense
+        geoExpenses.forEach(exp => {
+            const cat = CATEGORY_META[exp.category as ExpenseCategory] || CATEGORY_META.others;
+            const marker = L.circleMarker([exp.location!.lat, exp.location!.lng], {
+                radius: 8,
+                fillColor: cat.color,
+                color: '#fff',
+                weight: 1.5,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(map);
+
+            const popupContent = `
+                <div style="font-family: system-ui, sans-serif; color: #fff; padding: 4px; line-height: 1.4; width: 140px;">
+                    <div style="font-weight: 700; font-size: 12px; margin-bottom: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${exp.description}</div>
+                    <div style="font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                        <span style="color: ${cat.color}; font-weight: 600;">${cat.label}</span>
+                        <span style="font-weight: bold; color: #fff;">₹${exp.amount}</span>
+                    </div>
+                </div>
+            `;
+
+            marker.bindPopup(popupContent, {
+                closeButton: false,
+                className: 'dark-popup'
+            });
+        });
+
+        if (geoExpenses.length > 1) {
+            const bounds = L.latLngBounds(geoExpenses.map(e => [e.location!.lat, e.location!.lng]));
+            map.fitBounds(bounds, { padding: [40, 40] });
+        }
+    }, [tab, geoExpenses]);
+
+    // ─── Fetch AI Predictions handler ───
+    const fetchAiInsights = async () => {
         if (!activeGroup || expenses.length === 0) return;
-        setPredictionsLoading(true);
+        setAiLoading(true);
+        setAiError(null);
+
         try {
-            const total = expenses.reduce((s, e) => s + e.amount, 0);
-            const context = buildExpenseContext({
+            const ctx = buildExpenseContext({
                 groupName: activeGroup.name,
                 mode: activeGroup.mode,
-                members: activeGroup.members.map((m) => ({ name: m.name, uid: m.uid })),
-                expenses: expenses.map((e) => ({
-                    description: e.description,
-                    amount: e.amount,
-                    category: e.category,
-                    paidBy: e.paidBy,
-                    createdAt: e.createdAt,
-                })),
-                totalSpent: total,
-                contributions: contributions.map((c) => ({
-                    userId: c.userId,
-                    amount: c.amount,
-                    createdAt: c.createdAt,
-                })),
+                members: activeGroup.members,
+                expenses: expenses,
+                totalSpent: expenses.reduce((s, e) => s + e.amount, 0),
+                contributions: contributions,
             });
-            const result = await generatePredictions(context);
-            setPredictions(result);
+
+            const res = await generatePredictions(ctx);
+            setAiInsights(res);
         } catch (err) {
-            console.error('Predictions error:', err);
-            setPredictions('Unable to generate predictions right now. Please try again.');
+            console.error('Failed to get insights:', err);
+            setAiError('Could not connect to AI advisor. Try again in a moment.');
         } finally {
-            setPredictionsLoading(false);
+            setAiLoading(false);
         }
     };
 
-    const categoryBreakdown = useMemo(() => {
-        const map: Record<string, number> = {};
+    // ─── Stats computations ───
+    const stats = useMemo(() => {
+        const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+        const totalContributions = contributions.reduce((s, c) => s + c.amount, 0);
+        const poolBalance = totalContributions - totalSpent;
+
+        // Breakdown by category
+        const byCat: Record<string, number> = {};
         expenses.forEach((e) => {
-            map[e.category] = (map[e.category] || 0) + e.amount;
+            byCat[e.category] = (byCat[e.category] || 0) + e.amount;
         });
-        return Object.entries(map)
-            .sort(([, a], [, b]) => b - a)
-            .map(([cat, amount]) => ({
-                category: cat as ExpenseCategory,
+
+        const catList = Object.entries(byCat)
+            .map(([category, amount]) => ({
+                category: category as ExpenseCategory,
                 amount,
-                percent: totalSpend > 0 ? (amount / totalSpend) * 100 : 0,
-            }));
-    }, [expenses, totalSpend]);
-
-    const monthlySpend = useMemo(() => {
-        const map: Record<string, number> = {};
-        expenses.forEach((e) => {
-            const key = format(new Date(e.createdAt), 'yyyy-MM');
-            map[key] = (map[key] || 0) + e.amount;
-        });
-        return Object.entries(map)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .slice(-6)
-            .map(([month, amount]) => ({ month, amount, label: format(new Date(month + '-01'), 'MMM') }));
-    }, [expenses]);
-
-    const maxMonthly = Math.max(...monthlySpend.map((m) => m.amount), 1);
-
-    const personBreakdown = useMemo(() => {
-        if (!activeGroup) return [];
-        const map: Record<string, number> = {};
-        activeGroup.members.forEach((m) => { map[m.uid] = 0; });
-        expenses.forEach((e) => {
-            if (map[e.paidBy] !== undefined) map[e.paidBy] += e.amount;
-        });
-        return activeGroup.members
-            .map((m) => ({ uid: m.uid, name: m.name, photoURL: m.photoURL, amount: map[m.uid] || 0 }))
+                percent: totalSpent ? Math.round((amount / totalSpent) * 100) : 0,
+            }))
             .sort((a, b) => b.amount - a.amount);
-    }, [activeGroup, expenses]);
 
-    // ─── CALENDAR ───
-    const calDays = useMemo(() => {
-        const start = startOfMonth(calMonth);
-        const end = endOfMonth(calMonth);
-        return eachDayOfInterval({ start, end });
-    }, [calMonth]);
+        // Daily spending trend (last 7 days)
+        const dailyTrend: Record<string, number> = {};
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+            const d = subDays(new Date(), i);
+            return format(d, 'yyyy-MM-dd');
+        }).reverse();
 
-    const dayExpenseMap = useMemo(() => {
-        const map: Record<string, number> = {};
+        last7Days.forEach((day) => {
+            dailyTrend[day] = 0;
+        });
+
         expenses.forEach((e) => {
-            const key = format(new Date(e.createdAt), 'yyyy-MM-dd');
-            map[key] = (map[key] || 0) + e.amount;
+            const dayKey = format(new Date(e.createdAt), 'yyyy-MM-dd');
+            if (dayKey in dailyTrend) {
+                dailyTrend[dayKey] += e.amount;
+            }
         });
-        return map;
-    }, [expenses]);
 
-    const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-    const selectedDayExpenses = useMemo(() => {
-        if (!selectedDay) return [];
-        return expenses.filter((e) => isSameDay(new Date(e.createdAt), selectedDay));
-    }, [expenses, selectedDay]);
+        const trendList = Object.entries(dailyTrend).map(([date, amount]) => ({
+            label: format(new Date(date), 'dd MMM'),
+            amount,
+        }));
 
-    const calMonthTotal = useMemo(() => {
-        return expenses
-            .filter((e) => isSameMonth(new Date(e.createdAt), calMonth))
-            .reduce((s, e) => s + e.amount, 0);
-    }, [expenses, calMonth]);
+        return {
+            totalSpent,
+            totalContributions,
+            poolBalance,
+            categoryBreakdown: catList,
+            trend: trendList,
+        };
+    }, [expenses, contributions]);
 
-    const maxDayExpense = Math.max(...Object.values(dayExpenseMap), 1);
+    // ─── Calendar computations ───
+    const startOfCal = startOfMonth(calMonth);
+    const endOfCal = endOfMonth(calMonth);
+    const calDays = eachDayOfInterval({ start: startOfCal, end: endOfCal });
 
-    // ─── Stats Headers ───
-    const last7DaysSpend = useMemo(() => {
-        const today = new Date();
-        const start = startOfDay(subDays(today, 6)); // 7 days including today
-        const end = endOfDay(today);
-        return expenses
-            .filter((e) => isWithinInterval(new Date(e.createdAt), { start, end }))
-            .reduce((sum, e) => sum + e.amount, 0);
-    }, [expenses]);
 
-    const avgDailySpend = useMemo(() => {
-        // Filter expenses for the currently viewed month
-        const monthlyExpenses = expenses.filter((e) => isSameMonth(new Date(e.createdAt), calMonth));
-
-        // Get unique dates that have expenses
-        const activeDays = new Set(
-            monthlyExpenses.map((e) => format(new Date(e.createdAt), 'yyyy-MM-dd'))
-        ).size;
-
-        return activeDays > 0 ? calMonthTotal / activeDays : 0;
-    }, [expenses, calMonth, calMonthTotal]);
-
-    // ─── Recurring handlers ───
-    const handleAddRecurring = async () => {
-        if (!user || !activeGroupId || !recAmount || !recDesc) return;
-        setRecSaving(true);
-        await addRecurringExpense({
-            groupId: activeGroupId,
-            amount: parseFloat(recAmount),
-            description: recDesc.trim(),
-            category: recCategory,
-            dayOfMonth: parseInt(recDay),
-            usedBy: activeGroup?.members.map((m) => m.uid) || [],
-            createdBy: user.uid,
-            createdAt: Date.now(),
-            active: true,
-        });
-        setRecAmount('');
-        setRecDesc('');
-        setRecCategory('utilities');
-        setRecDay('1');
-        setShowAddRecurring(false);
-        setRecSaving(false);
+    const getDayExpenses = (day: Date) => {
+        return expenses.filter((e) => isSameDay(new Date(e.createdAt), day));
     };
 
-    const handleTriggerRecurring = async (rec: typeof recurringExpenses[0]) => {
-        if (!user || !activeGroupId || !activeGroup) return;
-        const monthKey = format(new Date(), 'yyyy-MM');
-        const mode = activeGroup.mode;
-        await addExpense({
-            groupId: activeGroupId,
-            amount: rec.amount,
-            description: rec.description,
-            category: rec.category,
-            mode,
-            paidBy: mode === 'pool' ? 'pool' : user.uid,
-            usedBy: rec.usedBy,
-            splitType: 'equal' as SplitType,
-            createdAt: Date.now(),
-            createdBy: user.uid,
-        });
-        await markRecurringAsAdded(rec.id, monthKey);
-    };
-
-    const currentMonthKey = format(new Date(), 'yyyy-MM');
 
 
-    // ─── Padding days for calendar ───
+    // Total for active view
+
+
     const firstDow = calDays[0]?.getDay() || 0;
 
     const tabs: { key: Tab; icon: typeof BarChart3; label: string }[] = [
         { key: 'stats', icon: BarChart3, label: 'Stats' },
         { key: 'calendar', icon: Calendar, label: 'Calendar' },
-        { key: 'recurring', icon: Repeat, label: 'Recurring' },
+        { key: 'map', icon: Map, label: 'Expenses Map' },
     ];
 
     return (
@@ -238,67 +242,71 @@ export default function Analytics() {
                 </div>
             ) : (
                 <>
-                    {/* Tab Switcher */}
-                    <div className="flex gap-1 p-1 bg-dark-800/50 rounded-xl mb-5">
-                        {tabs.map((t) => (
-                            <button key={t.key} onClick={() => setTab(t.key)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${tab === t.key
-                                    ? 'bg-accent text-white shadow-neon'
-                                    : 'text-dark-400 hover:text-dark-200'
-                                    }`}>
-                                <t.icon className="w-3.5 h-3.5" />
-                                {t.label}
-                            </button>
-                        ))}
+                    {/* Navigation Tabs */}
+                    <div className="flex bg-dark-900/60 p-1.5 rounded-xl border border-glass-border mb-4">
+                        {tabs.map((t) => {
+                            const Icon = t.icon;
+                            const active = tab === t.key;
+                            return (
+                                <button key={t.key} onClick={() => setTab(t.key)}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-all duration-300 ${active
+                                        ? 'bg-gradient-to-r from-accent to-purple-600 text-white shadow-neon scale-[1.02]'
+                                        : 'text-dark-400 hover:text-white'
+                                        }`}>
+                                    <Icon className="w-3.5 h-3.5" />
+                                    {t.label}
+                                </button>
+                            );
+                        })}
                     </div>
 
+                    {/* Tab Panels */}
                     <AnimatePresence mode="wait">
                         {/* ═══════════ STATS TAB ═══════════ */}
                         {tab === 'stats' && (
-                            <motion.div key="stats" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}
-                                className="space-y-5">
-
-                                {/* KPI Cards */}
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="glass-card p-3.5">
-                                        <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1">Total Spent</p>
-                                        <p className="text-xl font-bold text-white">₹{totalSpend.toLocaleString('en-IN')}</p>
-                                        <p className="text-[10px] text-dark-400 mt-0.5">{expenses.length} expenses</p>
+                            <motion.div key="stats" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-4">
+                                {/* Pool Balance / Total spent stats */}
+                                {activeGroup.mode === 'pool' ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="glass-card p-4">
+                                            <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1 font-bold">Pool Collected</p>
+                                            <p className="text-2xl font-black text-white">₹{stats.totalContributions.toLocaleString('en-IN')}</p>
+                                        </div>
+                                        <div className="glass-card p-4">
+                                            <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1 font-bold">Pool Spent</p>
+                                            <p className="text-2xl font-black text-danger-light">₹{stats.totalSpent.toLocaleString('en-IN')}</p>
+                                        </div>
                                     </div>
-                                    <div className="glass-card p-3.5">
-                                        <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1">
-                                            {activeGroup.mode === 'pool' ? 'Pool Total' : 'Avg/Expense'}
-                                        </p>
-                                        <p className="text-xl font-bold text-white">
-                                            ₹{activeGroup.mode === 'pool'
-                                                ? totalContributions.toLocaleString('en-IN')
-                                                : expenses.length > 0
-                                                    ? Math.round(totalSpend / expenses.length).toLocaleString('en-IN')
-                                                    : '0'
-                                            }
-                                        </p>
-                                        <p className="text-[10px] text-dark-400 mt-0.5">
-                                            {activeGroup.mode === 'pool' ? `${contributions.length} contributions` : 'per expense'}
-                                        </p>
+                                ) : (
+                                    <div className="glass-card p-4 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1 font-bold">Group Total Spent</p>
+                                            <p className="text-2xl font-black text-white">₹{stats.totalSpent.toLocaleString('en-IN')}</p>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-accent/10 text-accent-light">
+                                            <BarChart3 className="w-6 h-6" />
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {/* Category Breakdown */}
-                                {categoryBreakdown.length > 0 && (
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-white mb-2.5 flex items-center gap-1.5">
-                                            <TrendingUp className="w-4 h-4 text-accent-light" />
-                                            By Category
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {categoryBreakdown.map((item, i) => {
+                                <div className="glass-card p-4">
+                                    <h3 className="text-xs uppercase tracking-wider text-dark-500 font-bold mb-3 flex items-center gap-1.5">
+                                        <TrendingUp className="w-4 h-4 text-accent-light" />
+                                        By Category
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {stats.categoryBreakdown.length === 0 ? (
+                                            <p className="text-xs text-dark-500 text-center py-4">No expenses recorded yet</p>
+                                        ) : (
+                                            stats.categoryBreakdown.map((item, i) => {
                                                 const meta = CATEGORY_META[item.category] || CATEGORY_META.others;
                                                 return (
                                                     <motion.div key={item.category} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
                                                         transition={{ delay: i * 0.04 }} className="glass-card p-3">
                                                         <div className="flex items-center justify-between mb-1.5">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-sm">{meta.emoji}</span>
+                                                                <meta.icon className="w-3.5 h-3.5" style={{ color: meta.color }} />
                                                                 <span className="text-xs text-white font-medium">{meta.label}</span>
                                                             </div>
                                                             <span className="text-xs font-bold text-white">₹{item.amount.toLocaleString('en-IN')}</span>
@@ -312,281 +320,144 @@ export default function Analytics() {
                                                                 style={{ backgroundColor: meta.color }}
                                                             />
                                                         </div>
-                                                        <p className="text-[10px] text-dark-500 mt-1 text-right">{item.percent.toFixed(1)}%</p>
                                                     </motion.div>
                                                 );
-                                            })}
-                                        </div>
+                                            })
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
-                                {/* Monthly Trend */}
-                                {monthlySpend.length > 1 && (
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-white mb-2.5 flex items-center gap-1.5">
-                                            <TrendingDown className="w-4 h-4 text-success-light" />
-                                            Monthly Trend
-                                        </h3>
-                                        <div className="glass-card p-4">
-                                            <div className="flex items-end gap-2 h-28">
-                                                {monthlySpend.map((m, i) => (
-                                                    <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
-                                                        <motion.div
-                                                            initial={{ height: 0 }}
-                                                            animate={{ height: `${(m.amount / maxMonthly) * 100}%` }}
-                                                            transition={{ delay: 0.2 + i * 0.08, duration: 0.5, ease: 'easeOut' }}
-                                                            className="w-full rounded-t-md bg-gradient-to-t from-accent/60 to-accent min-h-[4px]"
-                                                        />
-                                                        <span className="text-[9px] text-dark-500">{m.label}</span>
-                                                    </div>
-                                                ))}
+                                {/* AI Smart predictions section */}
+                                <div className="glass-card p-4 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-2 text-dark-800/20">
+                                        <Sparkles className="w-20 h-20 rotate-12" />
+                                    </div>
+                                    <div className="relative">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                            <Sparkles className="w-4 h-4 text-purple-400" />
+                                            <h3 className="text-xs uppercase tracking-wider text-purple-400 font-bold">SynBot Advisor</h3>
+                                        </div>
+                                        <p className="text-xs text-dark-300 leading-relaxed mb-4">
+                                            Analyze your spending layout, split patterns, and balance forecasts.
+                                        </p>
+
+                                        {aiInsights ? (
+                                            <div className="p-3.5 rounded-xl bg-dark-800/80 border border-purple-500/20 text-xs text-dark-200 font-normal leading-relaxed whitespace-pre-line">
+                                                {aiInsights}
                                             </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Person-wise spending */}
-                                {personBreakdown.length > 0 && activeGroup.mode === 'direct' && (
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-white mb-2.5">Who Paid Most</h3>
-                                        <div className="space-y-1.5">
-                                            {personBreakdown.map((p, i) => (
-                                                <div key={p.uid} className="glass-card px-3 py-2.5 flex items-center gap-2">
-                                                    <span className="text-dark-500 text-xs font-bold w-5">#{i + 1}</span>
-                                                    {p.photoURL ? (
-                                                        <img src={p.photoURL} alt="" className="w-6 h-6 rounded-full" />
-                                                    ) : (
-                                                        <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center">
-                                                            <span className="text-[9px] text-accent-light font-bold">{p.name.charAt(0)}</span>
-                                                        </div>
-                                                    )}
-                                                    <span className="text-xs text-white font-medium flex-1 truncate">
-                                                        {p.uid === user?.uid ? 'You' : p.name.split(' ')[0]}
-                                                    </span>
-                                                    <span className="text-xs font-bold text-accent-light">₹{p.amount.toLocaleString('en-IN')}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* AI Predictions */}
-                                {expenses.length >= 1 && (
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-white mb-2.5 flex items-center gap-1.5">
-                                            <Sparkles className="w-4 h-4 text-accent-light" />
-                                            AI Insights
-                                        </h3>
-                                        {predictions ? (
-                                            <div className="glass-card p-3.5">
-                                                <p className="text-xs text-dark-200 leading-relaxed whitespace-pre-wrap">{predictions}</p>
-                                                <button onClick={handleGeneratePredictions} disabled={predictionsLoading}
-                                                    className="mt-2 text-[10px] text-accent-light hover:underline">
-                                                    {predictionsLoading ? 'Refreshing...' : 'Refresh insights'}
-                                                </button>
+                                        ) : aiError ? (
+                                            <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 text-xs text-danger-light">
+                                                {aiError}
                                             </div>
-                                        ) : (
-                                            <button onClick={handleGeneratePredictions} disabled={predictionsLoading}
-                                                className="glass-card p-4 w-full text-center hover:bg-dark-800/60 transition-all">
-                                                {predictionsLoading ? (
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <Loader className="w-4 h-4 text-accent-light animate-spin" />
-                                                        <span className="text-xs text-dark-300">Analyzing spending patterns...</span>
-                                                    </div>
+                                        ) : null}
+
+                                        {(expenses.length > 0) && (
+                                            <button onClick={fetchAiInsights} disabled={aiLoading}
+                                                className="mt-3 w-full py-2 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all">
+                                                {aiLoading ? (
+                                                    <>
+                                                        <Loader className="w-3.5 h-3.5 animate-spin" />
+                                                        Consulting SynBot...
+                                                    </>
                                                 ) : (
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <Sparkles className="w-4 h-4 text-accent-light" />
-                                                        <span className="text-xs text-dark-200 font-medium">Generate AI Spending Insights</span>
-                                                    </div>
+                                                    <>
+                                                        <Sparkles className="w-3.5 h-3.5" />
+                                                        {aiInsights ? 'Refresh Insights' : 'Generate Smart Insights'}
+                                                    </>
                                                 )}
                                             </button>
                                         )}
                                     </div>
-                                )}
+                                </div>
                             </motion.div>
                         )}
 
                         {/* ═══════════ CALENDAR TAB ═══════════ */}
                         {tab === 'calendar' && (
                             <motion.div key="calendar" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-                                {/* Month nav */}
-                                <div className="flex items-center justify-between mb-3">
-                                    <button onClick={() => { setCalMonth(subMonths(calMonth, 1)); setSelectedDay(null); }}
-                                        className="p-2 rounded-lg hover:bg-dark-800 transition-colors">
-                                        <ChevronLeft className="w-4 h-4 text-dark-300" />
-                                    </button>
-                                    <div className="text-center">
-                                        <p className="text-sm font-semibold text-white">{format(calMonth, 'MMMM yyyy')}</p>
-                                        <p className="text-[10px] text-dark-400">₹{calMonthTotal.toLocaleString('en-IN')} total</p>
+                                {/* Selector */}
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-semibold text-white">{format(calMonth, 'MMMM yyyy')}</h3>
+                                    <div className="flex gap-1.5">
+                                        <button onClick={() => setCalMonth(subMonths(calMonth, 1))} className="p-1.5 rounded-lg bg-dark-800 text-dark-300 hover:text-white">
+                                            <ChevronLeft size={16} />
+                                        </button>
+                                        <button onClick={() => setCalMonth(addMonths(calMonth, 1))} className="p-1.5 rounded-lg bg-dark-800 text-dark-300 hover:text-white">
+                                            <ChevronRight size={16} />
+                                        </button>
                                     </div>
-                                    <button onClick={() => { setCalMonth(addMonths(calMonth, 1)); setSelectedDay(null); }}
-                                        className="p-2 rounded-lg hover:bg-dark-800 transition-colors">
-                                        <ChevronRight className="w-4 h-4 text-dark-300" />
-                                    </button>
-                                </div>
-
-                                {/* Stats row — Last 7 days & Monthly Avg */}
-                                <div className="grid grid-cols-2 gap-3 mb-4">
-                                    <div className="glass-card p-2.5 text-center bg-dark-800/30">
-                                        <p className="text-[10px] text-dark-400 uppercase tracking-wide font-medium mb-0.5">Last 7 Days</p>
-                                        <p className="text-sm font-bold text-white">₹{last7DaysSpend.toLocaleString('en-IN')}</p>
-                                    </div>
-                                    <div className="glass-card p-2.5 text-center bg-dark-800/30">
-                                        <p className="text-[10px] text-dark-400 uppercase tracking-wide font-medium mb-0.5">Daily Avg</p>
-                                        <p className="text-sm font-bold text-white">₹{Math.round(avgDailySpend).toLocaleString('en-IN')}</p>
-                                    </div>
-                                </div>
-
-                                {/* Day labels */}
-                                <div className="grid grid-cols-7 gap-1 mb-1">
-                                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                                        <div key={i} className="text-center text-[10px] text-dark-600 py-1">{d}</div>
-                                    ))}
                                 </div>
 
                                 {/* Calendar grid */}
-                                <div className="grid grid-cols-7 gap-1 mb-4">
-                                    {/* Empty padding */}
-                                    {Array.from({ length: firstDow }).map((_, i) => (
-                                        <div key={`pad-${i}`} />
+                                <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, index) => (
+                                        <span key={index} className="text-[10px] font-bold text-dark-600 uppercase py-1">{d}</span>
                                     ))}
+                                    {/* Offset */}
+                                    {Array.from({ length: firstDow }).map((_, idx) => (
+                                        <div key={`offset-${idx}`} className="p-2" />
+                                    ))}
+                                    {/* Day Blocks */}
                                     {calDays.map((day) => {
-                                        const key = format(day, 'yyyy-MM-dd');
-                                        const amount = dayExpenseMap[key] || 0;
+                                        const dayExp = getDayExpenses(day);
+                                        const totalAmt = dayExp.reduce((s, e) => s + e.amount, 0);
                                         const isToday = isSameDay(day, new Date());
-                                        const isSelected = selectedDay && isSameDay(day, selectedDay);
-                                        const intensity = amount > 0 ? Math.min(amount / maxDayExpense, 1) : 0;
-
                                         return (
-                                            <button
-                                                key={key}
-                                                onClick={() => setSelectedDay(isSelected ? null : day)}
-                                                className={`relative aspect-square rounded-lg flex flex-col items-center justify-start fn-sans transition-all pt-1
-                                                    ${isSelected ? 'bg-accent/20 border border-accent/40' : ''}
-                                                    ${isToday && !isSelected ? 'border border-dark-600 bg-dark-800/30' : ''}
-                                                    ${!isSelected ? 'hover:bg-dark-800/50' : ''}
-                                                `}
-                                            >
-                                                <span className={`text-[10px] font-medium leading-none mb-1 ${isToday ? 'text-accent-light' : 'text-dark-500'}`}>
-                                                    {day.getDate()}
+                                            <div key={day.toISOString()}
+                                                className={`p-1.5 rounded-xl border flex flex-col justify-between items-center aspect-square ${isToday ? 'border-accent/40 bg-accent/5' : 'border-transparent bg-dark-900/40'}`}>
+                                                <span className={`text-[10px] font-medium leading-none ${isToday ? 'text-accent-light' : 'text-dark-400'}`}>
+                                                    {format(day, 'd')}
                                                 </span>
-                                                {amount > 0 && (
-                                                    <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
-                                                        <span className={`text-[9px] font-bold leading-tight ${isSelected ? 'text-white' : 'text-white/90'}`}>
-                                                            {amount >= 1000 ? `${(amount / 1000).toFixed(1)}k` : amount}
-                                                        </span>
-                                                        <div className="w-full h-0.5 rounded-full mt-0.5 mx-auto max-w-[16px]"
-                                                            style={{ backgroundColor: `rgba(139, 92, 246, ${0.4 + intensity * 0.6})` }}
-                                                        />
-                                                    </div>
+                                                {totalAmt > 0 ? (
+                                                    <span className="text-[8px] font-black text-white bg-dark-800/80 px-1 rounded truncate w-full text-center">
+                                                        ₹{totalAmt >= 1000 ? `${(totalAmt / 1000).toFixed(1)}k` : totalAmt}
+                                                    </span>
+                                                ) : (
+                                                    <span className="h-2" />
                                                 )}
-                                            </button>
+                                            </div>
                                         );
                                     })}
                                 </div>
-
-                                {/* Selected day details */}
-                                <AnimatePresence>
-                                    {selectedDay && (
-                                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                                            exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                                            <div className="glass-card p-3 mb-2">
-                                                <p className="text-xs font-semibold text-white mb-2">
-                                                    {format(selectedDay, 'EEEE, dd MMM yyyy')}
-                                                    <span className="text-dark-400 font-normal ml-1.5">
-                                                        · ₹{selectedDayExpenses.reduce((s, e) => s + e.amount, 0).toLocaleString('en-IN')}
-                                                    </span>
-                                                </p>
-                                                {selectedDayExpenses.length === 0 ? (
-                                                    <p className="text-dark-500 text-xs">No expenses this day</p>
-                                                ) : (
-                                                    <div className="space-y-1.5">
-                                                        {selectedDayExpenses.map((e) => {
-                                                            const cat = CATEGORY_META[e.category as ExpenseCategory] || CATEGORY_META.others;
-                                                            return (
-                                                                <div key={e.id} className="flex items-center gap-2">
-                                                                    <span className="text-sm">{cat.emoji}</span>
-                                                                    <span className="text-xs text-dark-200 flex-1 truncate">{e.description}</span>
-                                                                    <span className="text-xs font-bold text-white">₹{e.amount.toLocaleString('en-IN')}</span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
                             </motion.div>
                         )}
 
-                        {/* ═══════════ RECURRING TAB ═══════════ */}
-                        {tab === 'recurring' && (
-                            <motion.div key="recurring" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-                                {/* Add button */}
-                                <div className="flex items-center justify-between mb-3">
-                                    <h3 className="text-sm font-semibold text-white">Recurring Expenses</h3>
-                                    <button onClick={() => setShowAddRecurring(true)}
-                                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent/10 text-accent-light text-xs font-medium hover:bg-accent/20 transition-all">
-                                        <Plus className="w-3.5 h-3.5" /> Add
-                                    </button>
+                        {/* ═══════════ MAP TAB ═══════════ */}
+                        {tab === 'map' && (
+                            <motion.div key="map" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+                                <div className="mb-3">
+                                    <h3 className="text-sm font-semibold text-white">Expense Locations</h3>
+                                    <p className="text-[10px] text-dark-500">Geotagged group expenses mapped below</p>
                                 </div>
 
-                                {recurringExpenses.length === 0 ? (
+                                {geoExpenses.length === 0 ? (
                                     <div className="glass-card p-8 text-center">
-                                        <p className="text-2xl mb-2">🔄</p>
-                                        <p className="text-white font-medium mb-1">No Recurring Expenses</p>
-                                        <p className="text-dark-400 text-xs">Add recurring bills like Rent, WiFi, Subscriptions</p>
+                                        <div className="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center mx-auto mb-3">
+                                            <MapPin className="w-5 h-5 text-dark-400" />
+                                        </div>
+                                        <p className="text-white font-medium mb-1">No Location Data</p>
+                                        <p className="text-dark-400 text-xs">Add locations to your expenses when on trips to see them here.</p>
                                     </div>
                                 ) : (
-                                    <div className="space-y-2">
-                                        {recurringExpenses.map((rec) => {
-                                            const meta = CATEGORY_META[rec.category] || CATEGORY_META.others;
-                                            const alreadyAdded = rec.lastAdded === currentMonthKey;
-                                            return (
-                                                <div key={rec.id} className={`glass-card p-3.5 ${!rec.active ? 'opacity-50' : ''}`}>
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
-                                                            style={{ backgroundColor: meta.color + '20' }}>
-                                                            {meta.emoji}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium text-white truncate">{rec.description}</p>
-                                                            <p className="text-[10px] text-dark-400">
-                                                                Every {rec.dayOfMonth}{rec.dayOfMonth === 1 ? 'st' : rec.dayOfMonth === 2 ? 'nd' : rec.dayOfMonth === 3 ? 'rd' : 'th'} of month
-                                                                · {rec.usedBy.length} members
-                                                            </p>
-                                                        </div>
-                                                        <div className="text-right flex-shrink-0">
-                                                            <p className="text-sm font-bold text-white">₹{rec.amount.toLocaleString('en-IN')}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-dark-800/40">
-                                                        {!alreadyAdded && rec.active ? (
-                                                            <button onClick={() => handleTriggerRecurring(rec)}
-                                                                className="flex-1 py-1.5 rounded-lg bg-accent/10 text-accent-light text-xs font-medium hover:bg-accent/20 transition-all">
-                                                                Add for {format(new Date(), 'MMM')}
-                                                            </button>
-                                                        ) : (
-                                                            <span className="flex-1 text-[10px] text-success-light font-medium">
-                                                                ✓ Added for {format(new Date(), 'MMM')}
-                                                            </span>
-                                                        )}
-                                                        <button onClick={() => toggleRecurringExpense(rec.id, !rec.active)}
-                                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${rec.active
-                                                                ? 'bg-dark-800 text-dark-300 hover:bg-dark-700'
-                                                                : 'bg-success/10 text-success-light hover:bg-success/20'
-                                                                }`}>
-                                                            {rec.active ? 'Pause' : 'Resume'}
-                                                        </button>
-                                                        <button onClick={() => setDeletingRecurring(rec.id)}
-                                                            className="p-1.5 rounded-lg text-dark-500 hover:text-danger-light hover:bg-danger/10 transition-all">
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                    <div className="relative rounded-2xl border border-glass-border overflow-hidden bg-dark-900/60 p-1">
+                                        {/* Leaflet Custom Style Overrides */}
+                                        <style>{`
+                                            .leaflet-popup-content-wrapper {
+                                                background: #0f172a !important;
+                                                border: 1px solid #334155 !important;
+                                                border-radius: 12px !important;
+                                                box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3) !important;
+                                                padding: 4px !important;
+                                            }
+                                            .leaflet-popup-tip {
+                                                background: #0f172a !important;
+                                                border: 1px solid #334155 !important;
+                                            }
+                                            .leaflet-container {
+                                                background: #0a0e1a !important;
+                                            }
+                                        `}</style>
+                                        <div ref={mapRef} className="w-full h-80 rounded-xl overflow-hidden" />
                                     </div>
                                 )}
                             </motion.div>
@@ -594,90 +465,6 @@ export default function Analytics() {
                     </AnimatePresence>
                 </>
             )}
-
-            {/* ─── Add Recurring Modal ─── */}
-            <AnimatePresence>
-                {showAddRecurring && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center"
-                        onClick={() => setShowAddRecurring(false)}>
-                        <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="bg-dark-900 rounded-t-3xl sm:rounded-3xl p-6 w-full max-w-md border border-glass-border"
-                            onClick={(e) => e.stopPropagation()}>
-                            <div className="w-10 h-1 rounded-full bg-dark-600 mx-auto mb-4 sm:hidden" />
-                            <h2 className="text-lg font-bold text-white mb-4">Add Recurring Expense</h2>
-                            <div className="space-y-3 mb-4">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xl font-light text-dark-400">₹</span>
-                                    <input type="number" value={recAmount} onChange={(e) => setRecAmount(e.target.value)}
-                                        className="bg-transparent text-2xl font-bold text-white flex-1 focus:outline-none min-w-0"
-                                        placeholder="0" autoFocus inputMode="decimal" />
-                                </div>
-                                <input type="text" value={recDesc} onChange={(e) => setRecDesc(e.target.value)}
-                                    placeholder="e.g. Rent, WiFi, Netflix" className="input-dark text-sm" />
-                                <div>
-                                    <label className="text-xs text-dark-500 mb-1 block">Day of month</label>
-                                    <select value={recDay} onChange={(e) => setRecDay(e.target.value)}
-                                        className="input-dark text-sm w-full appearance-none cursor-pointer">
-                                        {Array.from({ length: 28 }, (_, i) => (
-                                            <option key={i + 1} value={i + 1}>{i + 1}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="grid grid-cols-5 gap-1.5">
-                                    {categories.map(([key, meta]) => (
-                                        <button key={key} onClick={() => setRecCategory(key)}
-                                            className={`p-2 rounded-lg border text-center transition-all ${recCategory === key
-                                                ? 'border-accent bg-accent/10' : 'border-transparent bg-dark-800/50'
-                                                }`}>
-                                            <span className="text-sm">{meta.emoji}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="flex gap-3">
-                                <button onClick={() => setShowAddRecurring(false)} className="btn-ghost flex-1 text-sm">Cancel</button>
-                                <button onClick={handleAddRecurring}
-                                    disabled={recSaving || !recAmount || parseFloat(recAmount) <= 0 || !recDesc.trim()}
-                                    className="btn-primary flex-1 text-sm">
-                                    {recSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" /> : 'Save'}
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* ─── Delete Recurring Confirmation ─── */}
-            <AnimatePresence>
-                {deletingRecurring && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
-                        onClick={() => setDeletingRecurring(null)}>
-                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="glass-card p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
-                                    <AlertTriangle className="w-5 h-5 text-danger-light" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-white">Delete Recurring?</h3>
-                                    <p className="text-dark-400 text-xs">This won't remove past expenses</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3">
-                                <button onClick={() => setDeletingRecurring(null)} className="btn-ghost flex-1 text-sm">Cancel</button>
-                                <button onClick={async () => { await deleteRecurringExpense(deletingRecurring); setDeletingRecurring(null); }}
-                                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 text-white text-sm font-semibold transition-all active:scale-95">
-                                    Delete
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }
