@@ -105,6 +105,7 @@ export default function Profile() {
     const [telegramChatId, setTelegramChatId] = useState('');
     const [telegramNotificationsEnabled, setTelegramNotificationsEnabled] = useState(false);
     const [savingTelegram, setSavingTelegram] = useState(false);
+    const [isTelegramMinimized, setIsTelegramMinimized] = useState(true);
 
     useEffect(() => {
         if (!user) return;
@@ -113,6 +114,13 @@ export default function Profile() {
                 const data = snapshot.data();
                 setTelegramChatId(data.telegramChatId || '');
                 setTelegramNotificationsEnabled(data.telegramNotificationsEnabled || false);
+                if (data.telegramChatId) {
+                    setIsTelegramMinimized(true);
+                } else {
+                    setIsTelegramMinimized(false);
+                }
+            } else {
+                setIsTelegramMinimized(false);
             }
         });
         return unsubscribe;
@@ -126,6 +134,7 @@ export default function Profile() {
                 telegramChatId: telegramChatId.trim(),
                 telegramNotificationsEnabled,
             }, { merge: true });
+            setIsTelegramMinimized(true);
             alert('Telegram integration settings updated successfully!');
         } catch (err) {
             console.error('Failed to save Telegram settings:', err);
@@ -626,48 +635,124 @@ export default function Profile() {
             {/* Telegram Integration Card */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
                 className="glass-card p-5 mt-4">
-                <div className="flex items-center gap-2 mb-2">
-                    <Send className="w-4 h-4 text-accent-light" />
-                    <h3 className="text-sm font-bold text-white">Telegram Notifications</h3>
-                </div>
-                <p className="text-[11px] text-dark-400 mb-4 leading-relaxed">
-                    Link your Telegram Chat/User ID to receive split and settlement alerts directly on Telegram.
-                </p>
-                <div className="space-y-3.5">
-                    <div>
-                        <label className="text-[10px] text-dark-500 font-bold uppercase tracking-wider block mb-1">Telegram Chat ID / User ID</label>
-                        <input
-                            type="text"
-                            value={telegramChatId}
-                            onChange={(e) => setTelegramChatId(e.target.value)}
-                            placeholder="e.g. 123456789"
-                            className="input-dark text-xs"
-                        />
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                        <Send className="w-4 h-4 text-accent-light" />
+                        <h3 className="text-sm font-bold text-white">Telegram Notifications</h3>
                     </div>
-                    <div className="flex items-center justify-between py-2 px-1 rounded-lg bg-dark-800/20 border border-glass-border/30">
-                        <div>
-                            <p className="text-xs text-white font-medium">Enable Telegram Alerts</p>
-                            <p className="text-[10px] text-dark-500">Forward notification updates to Telegram</p>
-                        </div>
+                    {isTelegramMinimized && telegramChatId && (
                         <button
-                            onClick={() => setTelegramNotificationsEnabled(!telegramNotificationsEnabled)}
-                            className="text-accent-light transition-all"
+                            onClick={() => setIsTelegramMinimized(false)}
+                            className="text-xs text-accent-light hover:underline font-semibold"
                         >
-                            {telegramNotificationsEnabled ? (
-                                <ToggleRight className="w-7 h-7 text-success-light" />
-                            ) : (
-                                <ToggleLeft className="w-7 h-7 text-dark-500" />
-                            )}
+                            Edit
                         </button>
-                    </div>
-                    <button
-                        onClick={handleSaveTelegram}
-                        disabled={savingTelegram}
-                        className="btn-primary w-full text-xs py-2 mt-1"
-                    >
-                        {savingTelegram ? 'Saving...' : 'Save Settings'}
-                    </button>
+                    )}
                 </div>
+
+                {isTelegramMinimized && telegramChatId ? (
+                    // Minimized Connected state
+                    <div className="space-y-3 mt-2">
+                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-success/5 border border-success/20">
+                            <div>
+                                <p className="text-xs text-white font-medium flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-success animate-pulse" /> Connected
+                                </p>
+                                <p className="text-[10px] text-dark-400 mt-0.5">Chat ID: {telegramChatId}</p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    const nextEnabled = !telegramNotificationsEnabled;
+                                    setTelegramNotificationsEnabled(nextEnabled);
+                                    if (user) {
+                                        await setDoc(doc(db, 'users', user.uid), {
+                                            telegramNotificationsEnabled: nextEnabled,
+                                        }, { merge: true });
+                                    }
+                                }}
+                                className="text-accent-light transition-all"
+                            >
+                                {telegramNotificationsEnabled ? (
+                                    <ToggleRight className="w-7 h-7 text-success-light" />
+                                ) : (
+                                    <ToggleLeft className="w-7 h-7 text-dark-500" />
+                                )}
+                            </button>
+                        </div>
+                        <p className="text-[9px] text-accent-light bg-accent/5 py-1.5 px-2.5 rounded-lg border border-accent/15">
+                            📣 Telegram notifications are coming soon! Saving your Chat ID prepares your account for the launch.
+                        </p>
+                    </div>
+                ) : (
+                    // Expanded Form state
+                    <>
+                        <p className="text-[11px] text-dark-400 mb-4 leading-relaxed">
+                            Link your Telegram ID to receive split and settlement alerts directly on Telegram.
+                        </p>
+                        <div className="space-y-3.5">
+                            <div>
+                                <label className="text-[10px] text-dark-500 font-bold uppercase tracking-wider block mb-1">Telegram Chat ID / User ID</label>
+                                <input
+                                    type="text"
+                                    value={telegramChatId}
+                                    onChange={(e) => setTelegramChatId(e.target.value)}
+                                    placeholder="e.g. 123456789"
+                                    className="input-dark text-xs"
+                                />
+                                <div className="mt-2 text-[10px] text-dark-400 leading-relaxed bg-dark-800/40 p-2 rounded-lg border border-glass-border">
+                                    💡 Need your Chat ID? Open Telegram and send any message to{' '}
+                                    <a
+                                        href="https://t.me/raw_info_bot?start=ChatID"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-accent-light hover:underline font-semibold"
+                                    >
+                                        @raw_info_bot ↗
+                                    </a>
+                                    . It will instantly reply with your Chat ID. Copy and paste it here!
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between py-2 px-1 rounded-lg bg-dark-800/20 border border-glass-border/30">
+                                <div>
+                                    <p className="text-xs text-white font-medium">Enable Telegram Alerts</p>
+                                    <p className="text-[10px] text-dark-500">Forward notification updates to Telegram</p>
+                                </div>
+                                <button
+                                    onClick={() => setTelegramNotificationsEnabled(!telegramNotificationsEnabled)}
+                                    className="text-accent-light transition-all"
+                                >
+                                    {telegramNotificationsEnabled ? (
+                                        <ToggleRight className="w-7 h-7 text-success-light" />
+                                    ) : (
+                                        <ToggleLeft className="w-7 h-7 text-dark-500" />
+                                    )}
+                                </button>
+                            </div>
+                            
+                            <p className="text-[9px] text-accent-light bg-accent/5 py-1.5 px-2.5 rounded-lg border border-accent/15">
+                                📣 Note: Telegram notifications are coming soon! Saving your Chat ID prepares your account.
+                            </p>
+
+                            <div className="flex gap-2">
+                                {telegramChatId && (
+                                    <button
+                                        onClick={() => setIsTelegramMinimized(true)}
+                                        className="w-1/3 border border-glass-border hover:bg-dark-800 text-white text-xs py-2 rounded-xl"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+                                <button
+                                    onClick={handleSaveTelegram}
+                                    disabled={savingTelegram}
+                                    className={`btn-primary text-xs py-2 ${telegramChatId ? 'w-2/3' : 'w-full'}`}
+                                >
+                                    {savingTelegram ? 'Saving...' : 'Save Settings'}
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                )}
             </motion.div>
 
             {/* Feedback & Suggestions */}

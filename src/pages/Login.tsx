@@ -29,7 +29,7 @@ export default function Login() {
             >
                 <div className="flex flex-col items-center mb-10">
                     <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center mb-6 shadow-glow p-4">
-                        <img src="/Logo.png" alt="SynSplit Logo" className="w-full h-full object-contain drop-shadow-md" />
+                        <img src="/logo.png" alt="SynSplit Logo" className="w-full h-full object-contain drop-shadow-md" />
                     </div>
                     <h1 className="text-2xl font-bold text-white mb-2">SynSplit</h1>
                     <p className="text-dark-400">Smart Expense Manager</p>
