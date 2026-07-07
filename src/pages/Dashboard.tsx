@@ -13,6 +13,28 @@ import { format } from 'date-fns';
 import SyncStatusIndicator from '../components/SyncStatusIndicator';
 import { requestPermissionAndSaveToken } from '../lib/messaging';
 
+const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.05
+        }
+    }
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 8 },
+    show: { 
+        opacity: 1, 
+        y: 0,
+        transition: { 
+            duration: 0.2, 
+            ease: [0.16, 1, 0.3, 1] as any
+        }
+    }
+};
+
 export default function Dashboard() {
     const { user } = useAuth();
     const { groups, groupsLoading: loading, activeGroup, expenses, contributions, settlements, debts } = useGroupData();
@@ -191,19 +213,29 @@ export default function Dashboard() {
 
     if (loading) {
         return (
-            <div className="px-4 pt-6 max-w-lg mx-auto">
+            <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="show"
+                className="px-4 pt-6 pb-4 max-w-lg mx-auto"
+            >
                 <div className="h-8 w-40 rounded shimmer mb-6" />
                 <div className="grid grid-cols-2 gap-3 mb-6">
                     {[1, 2, 3, 4].map((i) => <div key={i} className="glass-card p-4 h-20 shimmer" />)}
                 </div>
-            </div>
+            </motion.div>
         );
     }
 
     return (
-        <div className="px-4 pt-6 pb-4 max-w-lg mx-auto">
+        <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="px-4 pt-6 pb-4 max-w-lg mx-auto"
+        >
             {/* Greeting */}
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            <motion.div variants={itemVariants}
                 className="flex items-center justify-between mb-4">
                 <div>
                     <p className="text-dark-400 text-sm">Welcome back</p>
@@ -223,7 +255,7 @@ export default function Dashboard() {
 
             {/* Group Switcher */}
             {groups.length > 0 && (
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }} className="mb-4">
+                <motion.div variants={itemVariants} className="mb-4">
                     <div className="relative">
                         <select
                             value={activeGroupId || ''}
@@ -254,7 +286,7 @@ export default function Dashboard() {
 
             {/* PWA Install Nudge */}
             {!isStandalone && deferredPrompt && (
-                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                <motion.div variants={itemVariants}
                     className="glass-card p-4 border border-accent/25 bg-accent/5 mb-4 flex items-center gap-3 justify-between">
                     <div className="flex-1 min-w-0">
                         <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
@@ -273,7 +305,7 @@ export default function Dashboard() {
 
             {/* Notification Permission Nudge */}
             {notificationPermission === 'default' && (
-                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                <motion.div variants={itemVariants}
                     className="glass-card p-4 border border-warning/25 bg-warning/5 mb-4 flex items-center gap-3 justify-between">
                     <div className="flex-1 min-w-0">
                         <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
@@ -301,7 +333,7 @@ export default function Dashboard() {
 
             {/* Stats Cards */}
             {activeGroup && (
-                <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="mb-5">
+                <motion.div variants={itemVariants} className="mb-5">
                     {isPool ? (
                         <div className="grid grid-cols-3 gap-2.5">
                             <div className="glass-card p-3.5 text-center">
@@ -359,7 +391,7 @@ export default function Dashboard() {
 
             {/* Big Add Expense CTA */}
             {activeGroup && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="mb-5">
+                <motion.div variants={itemVariants} className="mb-5">
                     <button onClick={() => navigate('/add')}
                         className="w-full py-4 rounded-2xl bg-gradient-to-r from-accent to-purple-600 text-white font-semibold text-base flex items-center justify-center gap-2 shadow-neon hover:shadow-accent/30 transition-all active:scale-[0.98]">
                         <Plus className="w-5 h-5" /> Add Expense
@@ -369,7 +401,7 @@ export default function Dashboard() {
 
             {/* Who owes whom — works for both pool and direct */}
             {activeGroup && debts.length > 0 && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-5">
+                <motion.div variants={itemVariants} className="mb-5">
                     <h2 className="text-sm font-semibold text-white mb-2">
                         {isPool ? 'Pool Settlements' : 'Who owes whom'}
                     </h2>
@@ -398,7 +430,7 @@ export default function Dashboard() {
 
             {/* Recent Expenses */}
             {activeGroup && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.13 }} className="mb-5">
+                <motion.div variants={itemVariants} className="mb-5">
                     <div className="flex items-center justify-between mb-2">
                         <h2 className="text-sm font-semibold text-white">Recent Transactions</h2>
                         {expenses.length > 4 && (
@@ -481,6 +513,6 @@ export default function Dashboard() {
                         className="text-accent-light hover:underline font-medium">Sayan Mandal</a>
                 </p>
             </div>
-        </div>
-    );
+            </motion.div>
+        );
 }

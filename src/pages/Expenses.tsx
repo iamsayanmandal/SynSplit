@@ -14,6 +14,28 @@ import ConfirmDialog from '../components/ConfirmDialog';
 
 const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1000;
 
+const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.04
+        }
+    }
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 8 },
+    show: { 
+        opacity: 1, 
+        y: 0,
+        transition: { 
+            duration: 0.2, 
+            ease: [0.16, 1, 0.3, 1] as any
+        }
+    }
+};
+
 export default function Expenses() {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -254,9 +276,14 @@ export default function Expenses() {
     const total = expenses.reduce((s, e) => s + e.amount, 0);
 
     return (
-        <div className="px-4 pt-6 pb-4 max-w-lg mx-auto">
+        <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="px-4 pt-6 pb-4 max-w-lg mx-auto"
+        >
             {/* Header */}
-            <div className="flex items-center justify-between mb-4">
+            <motion.div variants={itemVariants} className="flex items-center justify-between mb-4">
                 <div>
                     <h1 className="text-xl font-bold text-white">Expenses</h1>
                     <p className="text-dark-400 text-xs">
@@ -276,7 +303,7 @@ export default function Expenses() {
                         <Plus className="w-5 h-5" />
                     </button>
                 </div>
-            </div>
+            </motion.div>
 
             {/* Export Modal */}
             <AnimatePresence>
@@ -355,7 +382,7 @@ export default function Expenses() {
 
             {/* Search & Filter Bar */}
             {expenses.length > 0 && (
-                <div className="space-y-3 mb-4">
+                <motion.div variants={itemVariants} className="space-y-3 mb-4">
                     <div className="flex gap-2">
                         <div className="relative flex-1">
                             <Search className="w-4 h-4 text-dark-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -448,7 +475,7 @@ export default function Expenses() {
                             </motion.div>
                         )}
                     </AnimatePresence>
-                </div>
+                </motion.div>
             )}
 
             {/* Expense List */}
@@ -478,9 +505,10 @@ export default function Expenses() {
                         return (
                             <motion.div
                                 key={exp.id}
-                                initial={{ opacity: 0, y: 12, scale: 0.97 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                transition={{ delay: i * 0.03, type: 'spring', stiffness: 300, damping: 25 }}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: Math.min(i * 0.02, 0.3), duration: 0.2, ease: [0.16, 1, 0.3, 1] as any }}
+                                style={{ transform: 'translate3d(0,0,0)', willChange: 'transform' }}
                                 whileTap={{ scale: 0.98 }}
                                 className="glass-card p-3.5"
                             >
@@ -653,6 +681,6 @@ export default function Expenses() {
                 confirmText="Delete"
                 type="danger"
             />
-        </div>
+        </motion.div>
     );
 }

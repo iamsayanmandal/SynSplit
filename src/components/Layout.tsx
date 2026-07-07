@@ -54,27 +54,28 @@ export default function Layout() {
                             Privacy Policy
                         </NavLink>
                     </div>
-                    <div className="max-w-lg mx-auto flex items-center justify-around px-2 py-2">
+                    <div className="max-w-lg mx-auto flex items-center justify-around px-2 py-1.5">
                         {navItems.map((item) => (
                             <NavLink
                                 key={item.to}
                                 to={item.to}
                                 end={item.to === '/'}
                                 className={({ isActive }) =>
-                                    `flex flex-col items-center gap-0.5 px-3 py-1 relative ${isActive ? 'text-accent' : 'text-dark-400'}`
+                                    `flex flex-col items-center gap-0.5 px-3.5 py-1.5 rounded-xl relative transition-colors duration-200 ${isActive ? 'text-white' : 'text-dark-400 hover:text-dark-200'}`
                                 }
                             >
                                 {({ isActive }) => (
                                     <>
-                                        <item.icon className={`w-5 h-5 transition-all duration-300 ${isActive ? 'text-accent' : 'text-dark-400'}`} />
-                                        <span className={`text-[10px] font-medium transition-all duration-300 ${isActive ? 'text-accent' : 'text-dark-500'}`}>
+                                        <item.icon className={`w-5 h-5 transition-all duration-300 ${isActive ? 'text-accent-light scale-105' : 'text-dark-400'}`} />
+                                        <span className={`text-[10px] font-bold transition-all duration-300 ${isActive ? 'text-white' : 'text-dark-500'}`}>
                                             {item.label}
                                         </span>
                                         {isActive && (
                                             <motion.div
-                                                layoutId="activeTab"
-                                                className="absolute -top-2 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent"
-                                                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                                                layoutId="activeTabPill"
+                                                className="absolute inset-y-1 inset-x-1 bg-accent/10 border border-accent/20 rounded-xl -z-10"
+                                                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                                                style={{ transform: 'translate3d(0,0,0)', willChange: 'transform' }}
                                             />
                                         )}
                                     </>
