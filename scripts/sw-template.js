@@ -15,12 +15,14 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
     console.log('[firebase-messaging-sw.js] Received background message ', payload);
-    // Customize notification here
-    const notificationTitle = payload.notification.title;
-    const notificationOptions = {
-        body: payload.notification.body,
-        icon: '/icon.svg'
-    };
-
-    self.registration.showNotification(notificationTitle, notificationOptions);
+    // If the message already has a notification object, the SDK will display it automatically.
+    // We only call showNotification if there's no notification field (i.e., data-only message).
+    if (!payload.notification) {
+        const notificationTitle = payload.data?.title || 'SynSplit Update';
+        const notificationOptions = {
+            body: payload.data?.body || '',
+            icon: '/icon.svg'
+        };
+        self.registration.showNotification(notificationTitle, notificationOptions);
+    }
 });

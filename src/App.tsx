@@ -59,6 +59,19 @@ function AppRoutes() {
   const [notification, setNotification] = useState<NotificationPayload | null>(null);
 
   useEffect(() => {
+    const handleSyncToast = () => {
+      setNotification({
+        title: '⚠️ Slow Network Connection',
+        body: 'Your changes are saved locally and will auto-sync with Firebase in the background.'
+      });
+    };
+    window.addEventListener('show-sync-toast', handleSyncToast);
+    return () => {
+      window.removeEventListener('show-sync-toast', handleSyncToast);
+    };
+  }, []);
+
+  useEffect(() => {
     // Listen for foreground messages
     if (messaging) {
       const unsubscribe = onMessage(messaging, (payload) => {

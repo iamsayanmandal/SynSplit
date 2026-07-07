@@ -130,7 +130,8 @@ export default function AddExpense() {
         try {
             const mode: ExpenseMode = selectedGroup?.mode || 'direct';
             const sanitizedDescription = sanitizeInput(description) || CATEGORY_META[category].label;
-            await addExpense({
+            
+            const expensePromise = addExpense({
                 groupId,
                 amount: parseFloat(amount),
                 description: sanitizedDescription,
@@ -143,6 +144,23 @@ export default function AddExpense() {
                 createdAt: 0, // Will be overridden by firestore.ts
                 createdBy: user.uid,
             });
+
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('TIMEOUT')), 4000)
+            );
+
+            // Race the write operation against a 4-second timeout for optimistic offline capabilities
+            try {
+                await Promise.race([expensePromise, timeoutPromise]);
+            } catch (err: any) {
+                if (err.message === 'TIMEOUT') {
+                    console.warn('Network timeout (4s) reached. Navigating optimistically while Firestore cache auto-syncs.');
+                    window.dispatchEvent(new CustomEvent('show-sync-toast'));
+                } else {
+                    throw err;
+                }
+            }
+
             navigate('/');
         } catch (err) {
             console.error('Failed to add expense:', err);

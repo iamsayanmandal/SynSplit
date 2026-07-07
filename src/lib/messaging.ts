@@ -11,19 +11,31 @@ export async function requestPermissionAndSaveToken(userId: string) {
             console.log('Push messaging not supported on this browser.');
             return;
         }
+        if (Notification.permission === 'denied') {
+            console.log('Notification permission is denied by the user.');
+            return;
+        }
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
+            const cacheKey = `fcm_token_saved_${userId}`;
+            const cachedToken = localStorage.getItem(cacheKey);
+
             const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
             if (currentToken) {
-                // Save the token to Firestore
-                const tokenRef = doc(db, 'users', userId, 'fcmTokens', currentToken);
-                await setDoc(tokenRef, {
-                    token: currentToken,
-                    lastSeen: serverTimestamp(),
-                });
-                console.log('FCM Token saved:', currentToken);
+                if (cachedToken !== currentToken) {
+                    // Save the token to Firestore
+                    const tokenRef = doc(db, 'users', userId, 'fcmTokens', currentToken);
+                    await setDoc(tokenRef, {
+                        token: currentToken,
+                        lastSeen: serverTimestamp(),
+                    });
+                    localStorage.setItem(cacheKey, currentToken);
+                    console.log('FCM Token saved and cached:', currentToken);
+                } else {
+                    console.log('FCM Token already cached and active.');
+                }
             } else {
-                console.log('No registration token available. Request permission to generate one.');
+                console.log('No registration token available.');
             }
         } else {
             console.log('Unable to get permission to notify.');

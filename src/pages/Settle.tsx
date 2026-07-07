@@ -81,7 +81,8 @@ export default function Settle() {
 
     const handleSettle = async () => {
         if (!settlingDebt || !activeGroup?.id || !user) return;
-        await addSettlement({
+        
+        const settlementPromise = addSettlement({
             groupId: activeGroup.id,
             fromUser: settlingDebt.from,
             toUser: settlingDebt.to,
@@ -89,6 +90,22 @@ export default function Settle() {
             createdBy: user.uid,
             createdAt: Date.now(),
         });
+
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('TIMEOUT')), 4000)
+        );
+
+        try {
+            await Promise.race([settlementPromise, timeoutPromise]);
+        } catch (err: any) {
+            if (err.message === 'TIMEOUT') {
+                console.warn('Network timeout (4s) reached. Saving locally and syncing in the background.');
+                window.dispatchEvent(new CustomEvent('show-sync-toast'));
+            } else {
+                throw err;
+            }
+        }
+
         setSettled(true);
         setTimeout(() => {
             setSettlingDebt(null);

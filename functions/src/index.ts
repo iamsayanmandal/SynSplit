@@ -15,6 +15,7 @@ interface ExpenseData {
     usedBy: string[];
     splitType: string;
     splitDetails?: Record<string, number>;
+    createdBy?: string;
 }
 
 interface SettlementData {
@@ -73,29 +74,17 @@ async function getBatchTokens(userIds: string[]): Promise<Map<string, string[]>>
 }
 
 /**
- * Remove stale/invalid FCM tokens after failed send attempts.
+ * Remove stale/invalid FCM tokens directly using userId and token to avoid collectionGroup queries.
  */
-async function cleanupStaleTokens(failedTokens: string[], allMessages: admin.messaging.Message[]) {
+async function deleteUserTokens(tokensToDelete: { uid: string; token: string }[]) {
+    if (tokensToDelete.length === 0) return;
     const batch = db.batch();
-    let cleanupCount = 0;
-
-    for (const [_index, msg] of allMessages.entries()) {
-        const tokenMsg = msg as admin.messaging.TokenMessage;
-        if (failedTokens.includes(tokenMsg.token)) {
-            // Search all users for this token and delete it
-            const usersSnap = await db.collectionGroup('fcmTokens')
-                .where('token', '==', tokenMsg.token).get();
-            usersSnap.forEach(doc => {
-                batch.delete(doc.ref);
-                cleanupCount++;
-            });
-        }
-    }
-
-    if (cleanupCount > 0) {
-        await batch.commit();
-        console.log(`[CLEANUP] Removed ${cleanupCount} stale FCM tokens.`);
-    }
+    tokensToDelete.forEach(({ uid, token }) => {
+        const ref = db.collection('users').doc(uid).collection('fcmTokens').doc(token);
+        batch.delete(ref);
+    });
+    await batch.commit();
+    console.log(`[CLEANUP] Batch-removed ${tokensToDelete.length} stale FCM tokens.`);
 }
 
 async function getUserName(uid: string, groupId?: string): Promise<string> {
@@ -123,15 +112,16 @@ async function getUserName(uid: string, groupId?: string): Promise<string> {
 async function sendExpenseNotification(expense: ExpenseData) {
     console.log(`[DEBUG] Processing Expense: ${expense.description} (${expense.amount})`);
 
-    const { paidBy, usedBy } = expense;
+    const { paidBy, usedBy, createdBy } = expense;
 
-    const payerName = await getUserName(paidBy, expense.groupId);
+    const payerId = paidBy === 'pool' ? (createdBy || '') : paidBy;
+    const payerName = await getUserName(payerId, expense.groupId);
 
-    // 2. Identify Recipients (Participants excluding Payer, Unique)
-    const uniqueRecipients = [...new Set(usedBy.filter(uid => uid !== paidBy))];
+    // 2. Identify Recipients (Participants excluding Payer and Creator, Unique)
+    const uniqueRecipients = [...new Set(usedBy.filter(uid => uid !== paidBy && uid !== createdBy))];
 
     if (uniqueRecipients.length === 0) {
-        console.log('[DEBUG] No recipients to notify (payer is only user or empty).');
+        console.log('[DEBUG] No recipients to notify (payer/creator is only user or empty).');
         return;
     }
 
@@ -139,6 +129,7 @@ async function sendExpenseNotification(expense: ExpenseData) {
     const tokenMap = await getBatchTokens(uniqueRecipients);
 
     const messages: admin.messaging.Message[] = [];
+    const tokenToUserMap = new Map<string, string>();
 
     for (const uid of uniqueRecipients) {
         const share = calculateShare(expense, uid);
@@ -149,6 +140,7 @@ async function sendExpenseNotification(expense: ExpenseData) {
         const uniqueTokens = [...new Set(userTokens)];
 
         for (const token of uniqueTokens) {
+            tokenToUserMap.set(token, uid);
             messages.push({
                 token: token,
                 notification: {
@@ -175,7 +167,7 @@ async function sendExpenseNotification(expense: ExpenseData) {
 
     // Auto-cleanup stale tokens on failure
     if (response.failureCount > 0) {
-        const failedTokens: string[] = [];
+        const tokensToDelete: { token: string; uid: string }[] = [];
         response.responses.forEach((r, i) => {
             const msg = messages[i] as admin.messaging.TokenMessage;
             if (!r.success) {
@@ -183,12 +175,15 @@ async function sendExpenseNotification(expense: ExpenseData) {
                 // Only cleanup tokens with permanent errors
                 if (r.error?.code === 'messaging/invalid-registration-token' ||
                     r.error?.code === 'messaging/registration-token-not-registered') {
-                    failedTokens.push(msg.token);
+                    const uid = tokenToUserMap.get(msg.token);
+                    if (uid) {
+                        tokensToDelete.push({ token: msg.token, uid });
+                    }
                 }
             }
         });
-        if (failedTokens.length > 0) {
-            await cleanupStaleTokens(failedTokens, messages);
+        if (tokensToDelete.length > 0) {
+            await deleteUserTokens(tokensToDelete);
         }
     }
 }
@@ -219,18 +214,18 @@ async function sendSettlementNotification(settlement: SettlementData) {
 
     // Auto-cleanup stale tokens
     if (response.failureCount > 0) {
-        const failedTokens: string[] = [];
+        const tokensToDelete: { token: string; uid: string }[] = [];
         response.responses.forEach((r, i) => {
             const msg = messages[i] as admin.messaging.TokenMessage;
             if (!r.success && (
                 r.error?.code === 'messaging/invalid-registration-token' ||
                 r.error?.code === 'messaging/registration-token-not-registered'
             )) {
-                failedTokens.push(msg.token);
+                tokensToDelete.push({ token: msg.token, uid: toUser });
             }
         });
-        if (failedTokens.length > 0) {
-            await cleanupStaleTokens(failedTokens, messages);
+        if (tokensToDelete.length > 0) {
+            await deleteUserTokens(tokensToDelete);
         }
     }
 }
