@@ -15,6 +15,7 @@ interface GroupDataContextType {
     settlementsLoading: boolean;
     balances: BalanceSummary[];
     debts: Debt[];
+    isSyncing: boolean;
 }
 
 const GroupDataContext = createContext<GroupDataContextType>({
@@ -29,6 +30,7 @@ const GroupDataContext = createContext<GroupDataContextType>({
     settlementsLoading: true,
     balances: [],
     debts: [],
+    isSyncing: false,
 });
 
 /**
@@ -38,14 +40,16 @@ const GroupDataContext = createContext<GroupDataContextType>({
  */
 export function GroupDataProvider({ children }: { children: ReactNode }) {
     const { activeGroupId } = useActiveGroup();
-    const { groups, loading: groupsLoading } = useGroups();
+    const { groups, loading: groupsLoading, hasPendingWrites: groupsPending } = useGroups();
 
     const activeGroup = groups.find((g) => g.id === activeGroupId) || null;
 
-    const { expenses, loading: expensesLoading } = useExpenses(activeGroupId || undefined);
-    const { contributions, loading: contributionsLoading } = usePoolContributions(activeGroupId || undefined);
-    const { settlements, loading: settlementsLoading } = useSettlements(activeGroupId || undefined);
+    const { expenses, loading: expensesLoading, hasPendingWrites: expensesPending } = useExpenses(activeGroupId || undefined);
+    const { contributions, loading: contributionsLoading, hasPendingWrites: contributionsPending } = usePoolContributions(activeGroupId || undefined);
+    const { settlements, loading: settlementsLoading, hasPendingWrites: settlementsPending } = useSettlements(activeGroupId || undefined);
     const { balances, debts } = useBalances(activeGroup, expenses, contributions, settlements);
+
+    const isSyncing = groupsPending || expensesPending || contributionsPending || settlementsPending;
 
     return (
         <GroupDataContext.Provider value={{
@@ -60,6 +64,7 @@ export function GroupDataProvider({ children }: { children: ReactNode }) {
             settlementsLoading,
             balances,
             debts,
+            isSyncing,
         }}>
             {children}
         </GroupDataContext.Provider>

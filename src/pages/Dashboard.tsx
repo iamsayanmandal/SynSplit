@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Wallet, Plus, ChevronDown, Clock, ArrowRightLeft, Coins } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Plus, ChevronDown, Clock, ArrowRightLeft, Coins, Download, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroupData } from '../contexts/GroupDataContext';
@@ -10,12 +10,64 @@ import { getUserProfile } from '../lib/firestore';
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory, Member } from '../types';
 import { format } from 'date-fns';
+import SyncStatusIndicator from '../components/SyncStatusIndicator';
+import { requestPermissionAndSaveToken } from '../lib/messaging';
 
 export default function Dashboard() {
     const { user } = useAuth();
     const { groups, groupsLoading: loading, activeGroup, expenses, contributions, settlements, debts } = useGroupData();
     const { activeGroupId, setActiveGroupId } = useActiveGroup();
     const navigate = useNavigate();
+
+    // PWA Install State
+    const [deferredPrompt, setDeferredPrompt] = useState<any>((window as any).deferredPrompt);
+    const [isStandalone, setIsStandalone] = useState(
+        window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone
+    );
+
+    useEffect(() => {
+        const handlePromptAvailable = () => {
+            setDeferredPrompt((window as any).deferredPrompt);
+        };
+        const handleStatusChanged = () => {
+            setDeferredPrompt(null);
+            setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone);
+        };
+        window.addEventListener('pwa-install-prompt-available', handlePromptAvailable);
+        window.addEventListener('pwa-install-status-changed', handleStatusChanged);
+        return () => {
+            window.removeEventListener('pwa-install-prompt-available', handlePromptAvailable);
+            window.removeEventListener('pwa-install-status-changed', handleStatusChanged);
+        };
+    }, []);
+
+    const handleInstallPWA = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            (window as any).deferredPrompt = null;
+            setDeferredPrompt(null);
+        }
+    };
+
+    // Notification Permission State
+    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+        typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+    );
+
+    const handleRequestNotificationPermission = async () => {
+        if (!user) return;
+        try {
+            const permission = await Notification.requestPermission();
+            setNotificationPermission(permission);
+            if (permission === 'granted') {
+                await requestPermissionAndSaveToken(user.uid);
+            }
+        } catch (e) {
+            console.error('Failed to request notification permission:', e);
+        }
+    };
 
     // Auto-select first group
     useEffect(() => {
@@ -157,18 +209,21 @@ export default function Dashboard() {
                     <p className="text-dark-400 text-sm">Welcome back</p>
                     <h1 className="text-2xl font-bold text-white">{firstName} 👋</h1>
                 </div>
-                {user?.photoURL ? (
-                    <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full border-2 border-dark-700" />
-                ) : (
-                    <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center">
-                        <span className="text-accent-light font-bold">{firstName.charAt(0)}</span>
-                    </div>
-                )}
+                <div className="flex items-center gap-3">
+                    <SyncStatusIndicator />
+                    {user?.photoURL ? (
+                        <img src={user.photoURL} alt="" className="w-10 h-10 rounded-xl border border-glass-border" />
+                    ) : (
+                        <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center">
+                            <span className="text-accent-light font-bold">{firstName.charAt(0)}</span>
+                        </div>
+                    )}
+                </div>
             </motion.div>
 
             {/* Group Switcher */}
             {groups.length > 0 && (
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }} className="mb-5">
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }} className="mb-4">
                     <div className="relative">
                         <select
                             value={activeGroupId || ''}
@@ -194,6 +249,44 @@ export default function Dashboard() {
                             </span>
                         </div>
                     )}
+                </motion.div>
+            )}
+
+            {/* PWA Install Nudge */}
+            {!isStandalone && deferredPrompt && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                    className="glass-card p-4 border border-accent/25 bg-accent/5 mb-4 flex items-center gap-3 justify-between">
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Download className="w-4 h-4 text-accent-light flex-shrink-0" /> Install SynSplit App
+                        </h3>
+                        <p className="text-[11px] text-dark-300 mt-1">
+                            Add to home screen for quick offline access and full-screen experience.
+                        </p>
+                    </div>
+                    <button onClick={handleInstallPWA}
+                        className="px-3 py-2 rounded-lg bg-gradient-to-r from-accent to-purple-600 hover:from-accent-hover hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-accent/20 transition-all flex-shrink-0">
+                        Install
+                    </button>
+                </motion.div>
+            )}
+
+            {/* Notification Permission Nudge */}
+            {notificationPermission === 'default' && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                    className="glass-card p-4 border border-warning/25 bg-warning/5 mb-4 flex items-center gap-3 justify-between">
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Bell className="w-4 h-4 text-warning flex-shrink-0" /> Enable Push Alerts
+                        </h3>
+                        <p className="text-[11px] text-dark-300 mt-1">
+                            Never miss an expense or settlement. Grant permission to get instant updates.
+                        </p>
+                    </div>
+                    <button onClick={handleRequestNotificationPermission}
+                        className="px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 hover:bg-warning/20 text-warning text-xs font-bold transition-all flex-shrink-0">
+                        Enable
+                    </button>
                 </motion.div>
             )}
 

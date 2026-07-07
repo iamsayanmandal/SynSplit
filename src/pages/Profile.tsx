@@ -1,16 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight, ExternalLink, FileText, Shield, Coins, CreditCard } from 'lucide-react';
+import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight, ExternalLink, FileText, Shield, Coins, CreditCard, Send, Bell, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
 import { signOut } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { deleteGroup, addMemberToGroup, addPoolContribution, updateGroupName, removeMemberFromGroup, toggleAllowMemberExpenses, getUserByEmail } from '../lib/firestore';
 import { sanitizeInput } from '../lib/splitCalculator';
 import CreateGroup from '../components/CreateGroup';
 import ConfirmDialog from '../components/ConfirmDialog';
-import type { Member } from '../types';
+import type { Member, Expense } from '../types';
+import SyncStatusIndicator from '../components/SyncStatusIndicator';
+import { requestPermissionAndSaveToken } from '../lib/messaging';
+import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
 
 export default function Profile() {
     const { user } = useAuth();
@@ -18,6 +21,169 @@ export default function Profile() {
     const { activeGroupId, setActiveGroupId } = useActiveGroup();
 
     const [showCreate, setShowCreate] = useState(false);
+
+    // ─── Monthly Expenses Tracking (All Groups) ───
+    const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
+
+    useEffect(() => {
+        if (groups.length === 0) {
+            setAllExpenses([]);
+            return;
+        }
+
+        const groupIds = groups.map((g) => g.id);
+        
+        // Query expenses matching this user's groups
+        const q = query(
+            collection(db, 'expenses'),
+            where('groupId', 'in', groupIds)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const items: Expense[] = [];
+            snapshot.forEach((doc) => {
+                items.push({ id: doc.id, ...doc.data() } as Expense);
+            });
+            setAllExpenses(items);
+        });
+
+        return unsubscribe;
+    }, [groups]);
+
+    const monthlyStats = useMemo(() => {
+        if (!user) return { totalShare: 0, totalPaid: 0 };
+        const startOfCurrentMonth = new Date();
+        startOfCurrentMonth.setDate(1);
+        startOfCurrentMonth.setHours(0, 0, 0, 0);
+        const startMs = startOfCurrentMonth.getTime();
+
+        let totalShare = 0;
+        let totalPaid = 0;
+
+        // Filter current month's expenses
+        const thisMonthExpenses = allExpenses.filter((e) => (e.createdAt || 0) >= startMs);
+
+        thisMonthExpenses.forEach((exp) => {
+            // Amount paid by this user
+            if (exp.paidBy === user.uid) {
+                totalPaid += exp.amount;
+            }
+
+            // User's split share
+            if (exp.usedBy.includes(user.uid)) {
+                let share = 0;
+                const { amount, splitType, splitDetails, usedBy } = exp;
+                switch (splitType) {
+                    case 'equal':
+                        share = amount / usedBy.length;
+                        break;
+                    case 'unequal':
+                        share = (splitDetails && splitDetails[user.uid]) ? splitDetails[user.uid] : 0;
+                        break;
+                    case 'percentage':
+                        share = (amount * ((splitDetails && splitDetails[user.uid]) ? splitDetails[user.uid] : 0)) / 100;
+                        break;
+                    case 'share': {
+                        const details = splitDetails || {};
+                        const totalShares = Object.values(details).reduce((a: number, b: number) => a + b, 0);
+                        const userShare = details[user.uid] || 0;
+                        share = totalShares ? (amount * userShare) / totalShares : 0;
+                        break;
+                    }
+                }
+                totalShare += share;
+            }
+        });
+
+        return {
+            totalShare: Math.round(totalShare * 100) / 100,
+            totalPaid: Math.round(totalPaid * 100) / 100,
+        };
+    }, [allExpenses, user]);
+
+    // ─── Telegram Settings State ───
+    const [telegramChatId, setTelegramChatId] = useState('');
+    const [telegramNotificationsEnabled, setTelegramNotificationsEnabled] = useState(false);
+    const [savingTelegram, setSavingTelegram] = useState(false);
+
+    useEffect(() => {
+        if (!user) return;
+        const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.data();
+                setTelegramChatId(data.telegramChatId || '');
+                setTelegramNotificationsEnabled(data.telegramNotificationsEnabled || false);
+            }
+        });
+        return unsubscribe;
+    }, [user]);
+
+    const handleSaveTelegram = async () => {
+        if (!user) return;
+        setSavingTelegram(true);
+        try {
+            await setDoc(doc(db, 'users', user.uid), {
+                telegramChatId: telegramChatId.trim(),
+                telegramNotificationsEnabled,
+            }, { merge: true });
+            alert('Telegram integration settings updated successfully!');
+        } catch (err) {
+            console.error('Failed to save Telegram settings:', err);
+            alert('Failed to save settings. Please try again.');
+        } finally {
+            setSavingTelegram(false);
+        }
+    };
+
+    // ─── PWA Install State ───
+    const [deferredPrompt, setDeferredPrompt] = useState<any>((window as any).deferredPrompt);
+    const [isStandalone, setIsStandalone] = useState(
+        window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone
+    );
+
+    useEffect(() => {
+        const handlePromptAvailable = () => {
+            setDeferredPrompt((window as any).deferredPrompt);
+        };
+        const handleStatusChanged = () => {
+            setDeferredPrompt(null);
+            setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone);
+        };
+        window.addEventListener('pwa-install-prompt-available', handlePromptAvailable);
+        window.addEventListener('pwa-install-status-changed', handleStatusChanged);
+        return () => {
+            window.removeEventListener('pwa-install-prompt-available', handlePromptAvailable);
+            window.removeEventListener('pwa-install-status-changed', handleStatusChanged);
+        };
+    }, []);
+
+    const handleInstallPWA = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            (window as any).deferredPrompt = null;
+            setDeferredPrompt(null);
+        }
+    };
+
+    // ─── Notification Permission State ───
+    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+        typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+    );
+
+    const handleRequestNotificationPermission = async () => {
+        if (!user) return;
+        try {
+            const permission = await Notification.requestPermission();
+            setNotificationPermission(permission);
+            if (permission === 'granted') {
+                await requestPermissionAndSaveToken(user.uid);
+            }
+        } catch (e) {
+            console.error('Failed to request notification permission:', e);
+        }
+    };
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
     const [showTerms, setShowTerms] = useState(false);
 
@@ -201,7 +367,7 @@ export default function Profile() {
         <div className="px-4 pt-6 pb-4 max-w-lg mx-auto">
             {/* User Card */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className="glass-card p-5 flex items-center gap-4 mb-5">
+                className="glass-card p-5 flex items-center gap-4 mb-4">
                 {user?.photoURL ? (
                     <img src={user.photoURL} alt="" className="w-14 h-14 rounded-2xl border-2 border-dark-700" />
                 ) : (
@@ -213,7 +379,69 @@ export default function Profile() {
                     <h2 className="text-lg font-bold text-white truncate">{user?.displayName || 'User'}</h2>
                     <p className="text-dark-400 text-sm truncate">{user?.email}</p>
                 </div>
+                <div className="flex-shrink-0">
+                    <SyncStatusIndicator />
+                </div>
             </motion.div>
+
+            {/* Monthly Spending Stats Grid */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }}
+                className="grid grid-cols-2 gap-3 mb-5">
+                <div className="glass-card p-4 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                        <Wallet className="w-10 h-10 text-accent-light" />
+                    </div>
+                    <p className="text-[10px] text-dark-400 font-bold uppercase tracking-wider">Your Share (This Month)</p>
+                    <p className="text-xl font-bold text-white mt-1.5">₹{monthlyStats.totalShare}</p>
+                    <p className="text-[9px] text-dark-500 mt-1">Across all {groups.length} groups</p>
+                </div>
+                <div className="glass-card p-4 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                        <Coins className="w-10 h-10 text-success-light" />
+                    </div>
+                    <p className="text-[10px] text-dark-400 font-bold uppercase tracking-wider">You Paid (This Month)</p>
+                    <p className="text-xl font-bold text-success-light mt-1.5">₹{monthlyStats.totalPaid}</p>
+                    <p className="text-[9px] text-dark-500 mt-1">Total cash outflow</p>
+                </div>
+            </motion.div>
+
+            {/* PWA Install Nudge */}
+            {!isStandalone && deferredPrompt && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                    className="glass-card p-4 border border-accent/25 bg-accent/5 mb-4 flex items-center gap-3 justify-between">
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Download className="w-4 h-4 text-accent-light flex-shrink-0" /> Install SynSplit App
+                        </h3>
+                        <p className="text-[11px] text-dark-300 mt-1">
+                            Add to home screen for quick offline access and full-screen experience.
+                        </p>
+                    </div>
+                    <button onClick={handleInstallPWA}
+                        className="px-3 py-2 rounded-lg bg-gradient-to-r from-accent to-purple-600 hover:from-accent-hover hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-accent/20 transition-all flex-shrink-0">
+                        Install
+                    </button>
+                </motion.div>
+            )}
+
+            {/* Notification Permission Nudge */}
+            {notificationPermission === 'default' && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                    className="glass-card p-4 border border-warning/25 bg-warning/5 mb-4 flex items-center gap-3 justify-between">
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Bell className="w-4 h-4 text-warning flex-shrink-0" /> Enable Push Alerts
+                        </h3>
+                        <p className="text-[11px] text-dark-300 mt-1">
+                            Never miss an expense or settlement. Grant permission to get instant updates.
+                        </p>
+                    </div>
+                    <button onClick={handleRequestNotificationPermission}
+                        className="px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 hover:bg-warning/20 text-warning text-xs font-bold transition-all flex-shrink-0">
+                        Enable
+                    </button>
+                </motion.div>
+            )}
 
             {/* Your Groups */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }}>
@@ -395,8 +623,55 @@ export default function Profile() {
                 )}
             </motion.div>
 
+            {/* Telegram Integration Card */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+                className="glass-card p-5 mt-4">
+                <div className="flex items-center gap-2 mb-2">
+                    <Send className="w-4 h-4 text-accent-light" />
+                    <h3 className="text-sm font-bold text-white">Telegram Notifications</h3>
+                </div>
+                <p className="text-[11px] text-dark-400 mb-4 leading-relaxed">
+                    Link your Telegram Chat/User ID to receive split and settlement alerts directly on Telegram.
+                </p>
+                <div className="space-y-3.5">
+                    <div>
+                        <label className="text-[10px] text-dark-500 font-bold uppercase tracking-wider block mb-1">Telegram Chat ID / User ID</label>
+                        <input
+                            type="text"
+                            value={telegramChatId}
+                            onChange={(e) => setTelegramChatId(e.target.value)}
+                            placeholder="e.g. 123456789"
+                            className="input-dark text-xs"
+                        />
+                    </div>
+                    <div className="flex items-center justify-between py-2 px-1 rounded-lg bg-dark-800/20 border border-glass-border/30">
+                        <div>
+                            <p className="text-xs text-white font-medium">Enable Telegram Alerts</p>
+                            <p className="text-[10px] text-dark-500">Forward notification updates to Telegram</p>
+                        </div>
+                        <button
+                            onClick={() => setTelegramNotificationsEnabled(!telegramNotificationsEnabled)}
+                            className="text-accent-light transition-all"
+                        >
+                            {telegramNotificationsEnabled ? (
+                                <ToggleRight className="w-7 h-7 text-success-light" />
+                            ) : (
+                                <ToggleLeft className="w-7 h-7 text-dark-500" />
+                            )}
+                        </button>
+                    </div>
+                    <button
+                        onClick={handleSaveTelegram}
+                        disabled={savingTelegram}
+                        className="btn-primary w-full text-xs py-2 mt-1"
+                    >
+                        {savingTelegram ? 'Saving...' : 'Save Settings'}
+                    </button>
+                </div>
+            </motion.div>
+
             {/* Feedback & Suggestions */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="mt-5">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="mt-4">
                 <a
                     href="https://forms.gle/fRdrU42JVmUbKTsr8"
                     target="_blank"

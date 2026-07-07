@@ -16,23 +16,28 @@ export function useGroups() {
     const { user } = useAuth();
     const [groups, setGroups] = useState<Group[]>([]);
     const [loading, setLoading] = useState(true);
+    const [hasPendingWrites, setHasPendingWrites] = useState(false);
 
     useEffect(() => {
         if (!user) {
             setGroups([]);
             setLoading(false);
+            setHasPendingWrites(false);
             return;
         }
         setLoading(true);
 
-        const unsubscribe = subscribeToGroups(user.uid, user.email || '', (groups) => {
+        const unsubscribe = subscribeToGroups(user.uid, user.email || '', (groups, metadata) => {
             setGroups(groups);
             setLoading(false);
+            if (metadata) {
+                setHasPendingWrites(metadata.hasPendingWrites);
+            }
         });
         return unsubscribe;
     }, [user]);
 
-    return { groups, loading };
+    return { groups, loading, hasPendingWrites };
 }
 
 // ─── useExpenses ───
@@ -40,22 +45,27 @@ export function useGroups() {
 export function useExpenses(groupId: string | undefined) {
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [loading, setLoading] = useState(true);
+    const [hasPendingWrites, setHasPendingWrites] = useState(false);
 
     useEffect(() => {
         if (!groupId) {
             setExpenses([]);
             setLoading(false);
+            setHasPendingWrites(false);
             return;
         }
         setLoading(true);
-        const unsubscribe = subscribeToExpenses(groupId, (expenses) => {
+        const unsubscribe = subscribeToExpenses(groupId, (expenses, metadata) => {
             setExpenses(expenses);
             setLoading(false);
+            if (metadata) {
+                setHasPendingWrites(metadata.hasPendingWrites);
+            }
         });
         return unsubscribe;
     }, [groupId]);
 
-    return { expenses, loading };
+    return { expenses, loading, hasPendingWrites };
 }
 
 // ─── usePoolContributions ───
@@ -63,22 +73,27 @@ export function useExpenses(groupId: string | undefined) {
 export function usePoolContributions(groupId: string | undefined) {
     const [contributions, setContributions] = useState<PoolContribution[]>([]);
     const [loading, setLoading] = useState(true);
+    const [hasPendingWrites, setHasPendingWrites] = useState(false);
 
     useEffect(() => {
         if (!groupId) {
             setContributions([]);
             setLoading(false);
+            setHasPendingWrites(false);
             return;
         }
         setLoading(true);
-        const unsubscribe = subscribeToPoolContributions(groupId, (contributions) => {
+        const unsubscribe = subscribeToPoolContributions(groupId, (contributions, metadata) => {
             setContributions(contributions);
             setLoading(false);
+            if (metadata) {
+                setHasPendingWrites(metadata.hasPendingWrites);
+            }
         });
         return unsubscribe;
     }, [groupId]);
 
-    return { contributions, loading };
+    return { contributions, loading, hasPendingWrites };
 }
 
 // ─── useSettlements ───
@@ -86,22 +101,27 @@ export function usePoolContributions(groupId: string | undefined) {
 export function useSettlements(groupId: string | undefined) {
     const [settlements, setSettlements] = useState<Settlement[]>([]);
     const [loading, setLoading] = useState(true);
+    const [hasPendingWrites, setHasPendingWrites] = useState(false);
 
     useEffect(() => {
         if (!groupId) {
             setSettlements([]);
             setLoading(false);
+            setHasPendingWrites(false);
             return;
         }
         setLoading(true);
-        const unsubscribe = subscribeToSettlements(groupId, (settlements) => {
+        const unsubscribe = subscribeToSettlements(groupId, (settlements, metadata) => {
             setSettlements(settlements);
             setLoading(false);
+            if (metadata) {
+                setHasPendingWrites(metadata.hasPendingWrites);
+            }
         });
         return unsubscribe;
     }, [groupId]);
 
-    return { settlements, loading };
+    return { settlements, loading, hasPendingWrites };
 }
 
 // ─── useBalances (derived — no extra re-renders) ───

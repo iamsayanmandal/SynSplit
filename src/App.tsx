@@ -59,6 +59,26 @@ function AppRoutes() {
   const [notification, setNotification] = useState<NotificationPayload | null>(null);
 
   useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      (window as any).deferredPrompt = e;
+      window.dispatchEvent(new CustomEvent('pwa-install-prompt-available'));
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    const handleAppInstalled = () => {
+      (window as any).deferredPrompt = null;
+      window.dispatchEvent(new CustomEvent('pwa-install-status-changed'));
+    };
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleSyncToast = () => {
       setNotification({
         title: '⚠️ Slow Network Connection',

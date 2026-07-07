@@ -178,15 +178,17 @@ export async function toggleAllowMemberExpenses(groupId: string, allow: boolean)
 export function subscribeToGroups(
     uid: string,
     email: string,
-    callback: (groups: Group[]) => void
+    callback: (groups: Group[], metadata?: { hasPendingWrites: boolean }) => void
 ): Unsubscribe {
     const groupsMap = new Map<string, Group>();
+    let uidPending = false;
+    let emailPending = false;
 
     // Helper to merge and sort
     const emit = () => {
         const sorted = Array.from(groupsMap.values())
             .sort((a, b) => b.updatedAt - a.updatedAt);
-        callback(sorted);
+        callback(sorted, { hasPendingWrites: uidPending || emailPending });
     };
 
     // 1. Query by UID (Existing main method)
@@ -196,20 +198,14 @@ export function subscribeToGroups(
         orderBy('updatedAt', 'desc')
     );
     const unsubUid = onSnapshot(qUid, (snapshot) => {
+        uidPending = snapshot.metadata.hasPendingWrites;
         snapshot.docChanges().forEach((change) => {
             if (change.type === 'removed') {
-                // Only remove if not kept by other query?
-                // Actually, complicated. Simply rebuilding from map is easier if we track source.
-                // For simplicity: If removed from one query, we might still be in the other.
-                // But generally, deletion removes from both. 
-                // Let's just update the map.
                 groupsMap.delete(change.doc.id);
             } else {
                 groupsMap.set(change.doc.id, { id: change.doc.id, ...change.doc.data() } as Group);
             }
         });
-        // If 'modified', it updates the map.
-        // If 'added', it updates the map.
         emit();
     });
 
@@ -222,18 +218,9 @@ export function subscribeToGroups(
             orderBy('updatedAt', 'desc')
         );
         unsubEmail = onSnapshot(qEmail, (snapshot) => {
+            emailPending = snapshot.metadata.hasPendingWrites;
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'removed') {
-                    // Check if preserved by UID query? No easy way without tracking.
-                    // However, typically a group matches ONE or BOTH.
-                    // If it matches BOTH, removing from one (e.g. email removed) but keeping UID is fine.
-                    // But here we might delete it from the view if email is removed, even if UID is there.
-                    // Edge case: User is in group by UID, but email was removed?
-                    // Safe approach: Re-evaluate? 
-                    // Let's assume Additive:
-                    // If we receive a 'removed' event, we can't be sure if we should remove it from the map
-                    // unless we know it's not in the other list.
-                    // For now, let's keep it simple: If removed here, delete. (Worst case: flickers).
                     groupsMap.delete(change.doc.id);
                 } else {
                     groupsMap.set(change.doc.id, { id: change.doc.id, ...change.doc.data() } as Group);
@@ -361,7 +348,7 @@ export async function updateExpense(
 
 export function subscribeToExpenses(
     groupId: string,
-    callback: (expenses: Expense[]) => void
+    callback: (expenses: Expense[], metadata?: { hasPendingWrites: boolean }) => void
 ): Unsubscribe {
     const q = query(
         collection(db, 'expenses'),
@@ -374,7 +361,7 @@ export function subscribeToExpenses(
         snapshot.forEach((doc) => {
             expenses.push({ id: doc.id, ...doc.data() } as Expense);
         });
-        callback(expenses);
+        callback(expenses, { hasPendingWrites: snapshot.metadata.hasPendingWrites });
     });
 }
 
@@ -400,7 +387,7 @@ export async function addPoolContribution(contribution: Omit<PoolContribution, '
 
 export function subscribeToPoolContributions(
     groupId: string,
-    callback: (contributions: PoolContribution[]) => void
+    callback: (contributions: PoolContribution[], metadata?: { hasPendingWrites: boolean }) => void
 ): Unsubscribe {
     const q = query(
         collection(db, 'pool_contributions'),
@@ -412,7 +399,7 @@ export function subscribeToPoolContributions(
             contributions.push({ id: doc.id, ...doc.data() } as PoolContribution);
         });
         contributions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        callback(contributions);
+        callback(contributions, { hasPendingWrites: snapshot.metadata.hasPendingWrites });
     });
 }
 
@@ -438,7 +425,7 @@ export async function addSettlement(settlement: Omit<Settlement, 'id'>): Promise
 
 export function subscribeToSettlements(
     groupId: string,
-    callback: (settlements: Settlement[]) => void
+    callback: (settlements: Settlement[], metadata?: { hasPendingWrites: boolean }) => void
 ): Unsubscribe {
     const q = query(
         collection(db, 'settlements'),
@@ -450,7 +437,7 @@ export function subscribeToSettlements(
             settlements.push({ id: doc.id, ...doc.data() } as Settlement);
         });
         settlements.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        callback(settlements);
+        callback(settlements, { hasPendingWrites: snapshot.metadata.hasPendingWrites });
     });
 }
 
