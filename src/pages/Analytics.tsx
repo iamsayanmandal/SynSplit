@@ -1,14 +1,62 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Calendar, Map, TrendingUp, MapPin, Sparkles, Loader, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BarChart3, Calendar, Map, TrendingUp, MapPin, Sparkles, Loader, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses, usePoolContributions } from '../hooks/hooks';
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory } from '../types';
 import { buildExpenseContext, generatePredictions } from '../lib/gemini';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, subDays } from 'date-fns';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+const MAP_PLATFORMS = {
+    'carto-dark': {
+        name: 'Carto Dark',
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        options: {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }
+    },
+    'carto-light': {
+        name: 'Carto Light',
+        url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        options: {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }
+    },
+    'osm': {
+        name: 'OpenStreetMap',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        options: {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        }
+    },
+    'google-road': {
+        name: 'Google Maps',
+        url: 'https://mt1.google.com/vt/lyrs=m&x={x}/{y}&z={z}',
+        options: {
+            attribution: '&copy; Google Maps',
+            maxZoom: 22
+        }
+    },
+    'google-sat': {
+        name: 'Google Satellite',
+        url: 'https://mt1.google.com/vt/lyrs=y&x={x}/{y}&z={z}',
+        options: {
+            attribution: '&copy; Google Maps',
+            maxZoom: 22
+        }
+    }
+};
 
 type Tab = 'stats' | 'calendar' | 'map';
+type MapPlatformKey = keyof typeof MAP_PLATFORMS;
 
 export default function Analytics() {
 
@@ -29,25 +77,9 @@ export default function Analytics() {
     // ─── Leaflet Map States & Refs ───
     const mapRef = useRef<HTMLDivElement>(null);
     const mapInstance = useRef<any>(null);
-    const [leafletReady, setLeafletReady] = useState(() => typeof (window as any).L !== 'undefined');
-
-    // Poll for Leaflet presence on window
-    useEffect(() => {
-        if (tab !== 'map') return;
-        if (typeof (window as any).L !== 'undefined') {
-            setLeafletReady(true);
-            return;
-        }
-
-        let intervalId = setInterval(() => {
-            if (typeof (window as any).L !== 'undefined') {
-                setLeafletReady(true);
-                clearInterval(intervalId);
-            }
-        }, 50);
-
-        return () => clearInterval(intervalId);
-    }, [tab]);
+    const [mapPlatform, setMapPlatform] = useState<MapPlatformKey>(() => {
+        return (localStorage.getItem('synsplit_map_platform') as MapPlatformKey) || 'carto-dark';
+    });
 
     // Geotagged Expenses Filter
     const geoExpenses = useMemo(() => {
@@ -56,7 +88,7 @@ export default function Analytics() {
 
     // Map Initialization
     useEffect(() => {
-        if (tab !== 'map' || !leafletReady || !mapRef.current) return;
+        if (tab !== 'map' || !mapRef.current) return;
 
         // Clean up previous instance and reset the DOM container to prevent already-initialized errors
         if (mapRef.current) {
@@ -71,9 +103,6 @@ export default function Analytics() {
             }
         }
 
-        const L = (window as any).L;
-        if (!L) return;
-
         // Center on average coords or fallback to India
         let center: [number, number] = [20.5937, 78.9629];
         let zoom = 5;
@@ -85,17 +114,15 @@ export default function Analytics() {
             zoom = 12;
         }
 
-        // Create map with Dark Theme CartoDB tiles
+        const platformConfig = MAP_PLATFORMS[mapPlatform];
+
+        // Create map with selected tile layer
         const map = L.map(mapRef.current, {
             center: center,
             zoom: zoom,
             zoomControl: true,
             layers: [
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-                    subdomains: 'abcd',
-                    maxZoom: 20
-                })
+                L.tileLayer(platformConfig.url, platformConfig.options)
             ]
         });
 
@@ -141,7 +168,7 @@ export default function Analytics() {
             const bounds = L.latLngBounds(geoExpenses.map(e => [e.location!.lat, e.location!.lng]));
             map.fitBounds(bounds, { padding: [40, 40] });
         }
-    }, [tab, leafletReady, geoExpenses]);
+    }, [tab, mapPlatform, geoExpenses]);
 
     // ─── Fetch AI Predictions handler ───
     const fetchAiInsights = async () => {
@@ -442,10 +469,34 @@ export default function Analytics() {
 
                         {/* ═══════════ MAP TAB ═══════════ */}
                         {tab === 'map' && (
-                            <motion.div key="map" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-                                <div className="mb-3">
-                                    <h3 className="text-sm font-semibold text-white">Expense Locations</h3>
-                                    <p className="text-[10px] text-dark-500">Geotagged group expenses mapped below</p>
+                            <motion.div key="map" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-white">Expense Locations</h3>
+                                        <p className="text-[10px] text-dark-500">Geotagged group expenses mapped below</p>
+                                    </div>
+                                    
+                                    {geoExpenses.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 bg-dark-900/60 p-1 rounded-xl border border-glass-border">
+                                            {(Object.keys(MAP_PLATFORMS) as MapPlatformKey[]).map((plat) => (
+                                                <button
+                                                    key={plat}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setMapPlatform(plat);
+                                                        localStorage.setItem('synsplit_map_platform', plat);
+                                                    }}
+                                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all duration-200 ${
+                                                        mapPlatform === plat
+                                                            ? 'bg-accent text-white shadow-lg shadow-accent/20'
+                                                            : 'text-dark-400 hover:text-white hover:bg-dark-800/40'
+                                                    }`}
+                                                >
+                                                    {MAP_PLATFORMS[plat].name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {geoExpenses.length === 0 ? (
@@ -457,25 +508,103 @@ export default function Analytics() {
                                         <p className="text-dark-400 text-xs">Add locations to your expenses when on trips to see them here.</p>
                                     </div>
                                 ) : (
-                                    <div className="relative rounded-2xl border border-glass-border overflow-hidden bg-dark-900/60 p-1">
-                                        {/* Leaflet Custom Style Overrides */}
-                                        <style>{`
-                                            .leaflet-popup-content-wrapper {
-                                                background: #0f172a !important;
-                                                border: 1px solid #334155 !important;
-                                                border-radius: 12px !important;
-                                                box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3) !important;
-                                                padding: 4px !important;
-                                            }
-                                            .leaflet-popup-tip {
-                                                background: #0f172a !important;
-                                                border: 1px solid #334155 !important;
-                                            }
-                                            .leaflet-container {
-                                                background: #0a0e1a !important;
-                                            }
-                                        `}</style>
-                                        <div ref={mapRef} className="w-full h-80 rounded-xl overflow-hidden" />
+                                    <div className="space-y-4">
+                                        <div className="relative rounded-2xl border border-glass-border overflow-hidden bg-dark-900/60 p-1">
+                                            {/* Leaflet Custom Style Overrides */}
+                                            <style>{`
+                                                .leaflet-popup-content-wrapper {
+                                                    background: #0f172a !important;
+                                                    border: 1px solid #334155 !important;
+                                                    border-radius: 12px !important;
+                                                    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3) !important;
+                                                    padding: 4px !important;
+                                                }
+                                                .leaflet-popup-tip {
+                                                    background: #0f172a !important;
+                                                    border: 1px solid #334155 !important;
+                                                }
+                                                .leaflet-container {
+                                                    background: #0a0e1a !important;
+                                                    z-index: 10;
+                                                }
+                                            `}</style>
+                                            <div ref={mapRef} className="w-full h-80 rounded-xl overflow-hidden" />
+                                        </div>
+
+                                        {/* Geotagged Expenses List (Platform Fallbacks) */}
+                                        <div className="space-y-2.5">
+                                            <h4 className="text-xs font-semibold text-dark-300 px-1">Location Details & Navigation</h4>
+                                            <div className="grid gap-2 sm:grid-cols-2">
+                                                {geoExpenses.map((exp) => {
+                                                    const cat = CATEGORY_META[exp.category as ExpenseCategory] || CATEGORY_META.others;
+                                                    const CatIcon = cat.icon;
+                                                    const formattedDate = format(new Date(exp.createdAt), 'MMM dd, yyyy');
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={exp.id} 
+                                                            className="glass-card p-3 flex flex-col justify-between hover:border-dark-700 transition-all duration-300"
+                                                        >
+                                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <div 
+                                                                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                                                                        style={{ backgroundColor: `${cat.color}15`, color: cat.color }}
+                                                                    >
+                                                                        <CatIcon className="w-4 h-4" />
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-xs font-semibold text-white truncate">{exp.description}</p>
+                                                                        <p className="text-[10px] text-dark-500">{formattedDate}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <span className="text-xs font-bold text-white whitespace-nowrap">₹{exp.amount}</span>
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between border-t border-dark-800/60 pt-2 mt-1">
+                                                                <span className="text-[9px] text-dark-400 flex items-center gap-1">
+                                                                    <MapPin className="w-2.5 h-2.5 text-accent" />
+                                                                    {exp.location!.lat.toFixed(4)}, {exp.location!.lng.toFixed(4)}
+                                                                </span>
+                                                                
+                                                                <div className="flex items-center gap-1 flex-wrap">
+                                                                    <a 
+                                                                        href={`https://www.google.com/maps?q=${exp.location!.lat},${exp.location!.lng}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="p-1 px-1.5 rounded bg-dark-800 hover:bg-dark-700 text-dark-300 hover:text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 border border-dark-800"
+                                                                        title="Open in Google Maps"
+                                                                    >
+                                                                        Google
+                                                                        <ExternalLink className="w-2 h-2" />
+                                                                    </a>
+                                                                    <a 
+                                                                        href={`https://maps.apple.com/?q=${exp.location!.lat},${exp.location!.lng}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="p-1 px-1.5 rounded bg-dark-800 hover:bg-dark-700 text-dark-300 hover:text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 border border-dark-800"
+                                                                        title="Open in Apple Maps"
+                                                                    >
+                                                                        Apple
+                                                                        <ExternalLink className="w-2 h-2" />
+                                                                    </a>
+                                                                    <a 
+                                                                        href={`https://www.openstreetmap.org/?mlat=${exp.location!.lat}&mlon=${exp.location!.lng}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="p-1 px-1.5 rounded bg-dark-800 hover:bg-dark-700 text-dark-300 hover:text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 border border-dark-800"
+                                                                        title="Open in OpenStreetMap"
+                                                                    >
+                                                                        OSM
+                                                                        <ExternalLink className="w-2 h-2" />
+                                                                    </a>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </motion.div>
