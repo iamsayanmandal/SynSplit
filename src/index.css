@@ -1,3 +1,85 @@
+:root, [data-theme="smoke"] {
+  --color-accent: 99 102 241;
+  --color-accent-light: 129 140 248;
+  --color-accent-dark: 79 70 229;
+  --color-accent-glow: rgba(99, 102, 241, 0.3);
+  --color-bg-base: 6 8 16;
+  --color-bg-900: 10 14 26;
+  --color-bg-800: 15 23 42;
+  --color-glass-bg: rgba(255, 255, 255, 0.08);
+  --color-glass-border: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="jaguar"] {
+  --color-accent: 234 179 8;
+  --color-accent-light: 253 224 71;
+  --color-accent-dark: 202 138 4;
+  --color-accent-glow: rgba(234, 179, 8, 0.25);
+  --color-bg-base: 0 0 0;
+  --color-bg-900: 7 7 7;
+  --color-bg-800: 18 18 18;
+  --color-glass-bg: rgba(10, 10, 10, 0.95);
+  --color-glass-border: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="pink"] {
+  --color-accent: 236 72 153;
+  --color-accent-light: 244 114 182;
+  --color-accent-dark: 219 39 119;
+  --color-accent-glow: rgba(236, 72, 153, 0.35);
+  --color-bg-base: 24 9 17;
+  --color-bg-900: 35 13 25;
+  --color-bg-800: 46 17 33;
+  --color-glass-bg: rgba(255, 182, 193, 0.06);
+  --color-glass-border: rgba(255, 182, 193, 0.12);
+}
+
+@keyframes smokeDrift {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.2) rotate(120deg);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.8) rotate(240deg);
+  }
+  100% {
+    transform: translate(0, 0) scale(1) rotate(360deg);
+  }
+}
+
+@keyframes bubbleFloat {
+  0% {
+    transform: translateY(100vh) scale(0.5);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-10vh) scale(1.3);
+    opacity: 0;
+  }
+}
+
+.animate-smoke-1 {
+  animation: smokeDrift 25s ease-in-out infinite alternate;
+}
+.animate-smoke-2 {
+  animation: smokeDrift 35s ease-in-out infinite alternate-reverse;
+}
+.animate-smoke-3 {
+  animation: smokeDrift 40s ease-in-out infinite alternate;
+}
+
+.animate-bubble {
+  animation: bubbleFloat 12s linear infinite;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -15,7 +97,7 @@
 
   body {
     overscroll-behavior: none;
-    background: #060810;
+    background: rgb(var(--color-bg-base));
     min-height: 100vh;
     min-height: 100dvh;
   }

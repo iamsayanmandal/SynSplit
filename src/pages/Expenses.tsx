@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useAnimation, useMotionValue } from 'framer-motion';
 import { Trash2, Plus, Download, Search, MapPin, Pencil, Check, FileText, Coins } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
@@ -35,6 +35,175 @@ const itemVariants = {
         }
     }
 };
+
+interface ExpenseSwipeRowProps {
+    exp: Expense;
+    index: number;
+    user: any;
+    getMemberPhoto: (uid: string, expense: Expense) => string | undefined;
+    getMemberName: (uid: string, expense: Expense) => string;
+    canEdit: (exp: Expense) => boolean;
+    openEdit: (exp: Expense) => void;
+    setDeletingExpense: (exp: Expense) => void;
+}
+
+function ExpenseSwipeRow({
+    exp,
+    index,
+    user,
+    getMemberPhoto,
+    getMemberName,
+    canEdit,
+    openEdit,
+    setDeletingExpense
+}: ExpenseSwipeRowProps) {
+    const controls = useAnimation();
+    const x = useMotionValue(0);
+
+    const isEditable = canEdit(exp);
+    const isDeletable = exp.createdBy === user?.uid;
+    const wasEdited = !!exp.editedAt;
+    const cat = CATEGORY_META[exp.category as ExpenseCategory] || CATEGORY_META.others;
+    const creatorPhoto = getMemberPhoto(exp.createdBy, exp);
+    const creatorName = getMemberName(exp.createdBy, exp);
+    const payerName = getMemberName(exp.paidBy, exp);
+
+    const handleDragEnd = async (event: any, info: any) => {
+        const threshold = 75; // px
+        if (info.offset.x > threshold && isEditable) {
+            openEdit(exp);
+        } else if (info.offset.x < -threshold && isDeletable) {
+            setDeletingExpense(exp);
+        }
+        controls.start({ x: 0, transition: { type: 'spring', stiffness: 350, damping: 25 } });
+    };
+
+    return (
+        <div className="relative overflow-hidden rounded-2xl w-full select-none" style={{ touchAction: 'pan-y' }}>
+            {/* Background Actions behind card */}
+            {isEditable && (
+                <div className="absolute inset-y-0 left-0 w-24 bg-accent/20 flex items-center justify-start pl-6 text-accent-light rounded-l-2xl pointer-events-none">
+                    <div className="flex flex-col items-center gap-0.5">
+                        <Pencil className="w-4 h-4 animate-pulse" />
+                        <span className="text-[9px] font-bold">Edit</span>
+                    </div>
+                </div>
+            )}
+            {isDeletable && (
+                <div className="absolute inset-y-0 right-0 w-24 bg-danger/20 flex items-center justify-end pr-6 text-danger-light rounded-r-2xl pointer-events-none">
+                    <div className="flex flex-col items-center gap-0.5">
+                        <Trash2 className="w-4 h-4 animate-pulse" />
+                        <span className="text-[9px] font-bold">Delete</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Draggable Card */}
+            <motion.div
+                drag="x"
+                dragDirectionLock
+                dragConstraints={{ left: isDeletable ? -100 : 0, right: isEditable ? 100 : 0 }}
+                dragElastic={0.3}
+                onDragEnd={handleDragEnd}
+                animate={controls}
+                style={{ x }}
+                whileTap={{ scale: 0.985 }}
+                className="glass-card p-3.5 relative z-10 cursor-grab active:cursor-grabbing"
+            >
+                {/* Main row */}
+                <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: cat.color + '20' }}>
+                        <cat.icon className="w-4.5 h-4.5" style={{ color: cat.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{exp.description}</p>
+                        <p className="text-[11px] text-dark-500 mt-0.5">
+                            {format(new Date(exp.createdAt), 'dd MMM yyyy · h:mm a')}
+                        </p>
+                    </div>
+                    <p className="text-sm font-bold text-white flex-shrink-0">₹{exp.amount.toLocaleString('en-IN')}</p>
+                </div>
+
+                {/* Payer & Split Info Row */}
+                <div className="mt-2.5 pt-2 border-t border-dark-800/40 flex flex-col gap-1 text-[11px] text-dark-400">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-dark-500">Paid by:</span>
+                            {exp.paidBy === 'pool' ? (
+                                <span className="w-4 h-4 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
+                                    <Coins className="w-2 h-2 text-accent-light" />
+                                </span>
+                            ) : getMemberPhoto(exp.paidBy, exp) ? (
+                                <img src={getMemberPhoto(exp.paidBy, exp)!} alt="" className="w-4 h-4 rounded-full border border-dark-700 object-cover" />
+                            ) : (
+                                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payerName)}`} alt="" className="w-4 h-4 rounded-full border border-dark-700" />
+                            )}
+                            <span className="font-semibold text-white truncate">{payerName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="text-dark-500">Split:</span>
+                            <div className="flex -space-x-1.5 overflow-hidden">
+                                {exp.usedBy.map((uid) => {
+                                    const name = getMemberName(uid, exp);
+                                    const photo = getMemberPhoto(uid, exp);
+                                    return photo ? (
+                                        <img key={uid} src={photo} alt={name} title={name} className="inline-block w-4 h-4 rounded-full border border-dark-900 object-cover" />
+                                    ) : (
+                                        <img key={uid} src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`} alt={name} title={name} className="inline-block w-4 h-4 rounded-full border border-dark-900" />
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer: creator + actions */}
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-dark-800/30">
+                    <div className="flex items-center gap-1.5">
+                        {creatorPhoto ? (
+                            <img src={creatorPhoto} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />
+                        ) : (
+                            <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(creatorName)}`} alt="" className="w-3.5 h-3.5 rounded-full" />
+                        )}
+                        <span className="text-[10px] text-dark-500">
+                            Added by: <span className="text-dark-400 font-medium">{creatorName.split(' ')[0]}</span>
+                        </span>
+                        {wasEdited && (
+                            <span className="text-[9px] text-dark-600">
+                                · edited {formatDistanceToNow(new Date(exp.editedAt!), { addSuffix: true })}
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                        {exp.location && (
+                            <a href={`https://www.google.com/maps?q=${exp.location.lat},${exp.location.lng}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="p-1 rounded-lg text-green-500 hover:text-green-400 hover:bg-green-500/10 transition-all"
+                                title="Open in Google Maps"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <MapPin className="w-3 h-3" />
+                            </a>
+                        )}
+                        {isEditable && (
+                            <button onClick={(e) => { e.stopPropagation(); openEdit(exp); }}
+                                className="p-1 rounded-lg text-dark-500 hover:text-accent-light hover:bg-accent/10 transition-all sm:flex hidden">
+                                <Pencil className="w-3 h-3" />
+                            </button>
+                        )}
+                        {exp.createdBy === user?.uid && (
+                            <button onClick={(e) => { e.stopPropagation(); setDeletingExpense(exp); }}
+                                className="p-1 rounded-lg text-dark-500 hover:text-danger-light hover:bg-danger/10 transition-all sm:flex hidden">
+                                <Trash2 className="w-3 h-3" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </motion.div>
+        </div>
+    );
+}
 
 export default function Expenses() {
     const navigate = useNavigate();
@@ -494,115 +663,19 @@ export default function Expenses() {
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {filtered.map((exp, i) => {
-                        const cat = CATEGORY_META[exp.category as ExpenseCategory] || CATEGORY_META.others;
-                        const creatorPhoto = getMemberPhoto(exp.createdBy, exp);
-                        const creatorName = getMemberName(exp.createdBy, exp);
-                        const payerName = getMemberName(exp.paidBy, exp);
-                        const isEditable = canEdit(exp);
-                        const wasEdited = !!exp.editedAt;
-
-                        return (
-                            <motion.div
-                                key={exp.id}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: Math.min(i * 0.02, 0.3), duration: 0.2, ease: [0.16, 1, 0.3, 1] as any }}
-                                style={{ transform: 'translate3d(0,0,0)', willChange: 'transform' }}
-                                whileTap={{ scale: 0.98 }}
-                                className="glass-card p-3.5"
-                            >
-                                {/* Main row */}
-                                <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                                        style={{ backgroundColor: cat.color + '20' }}>
-                                        <cat.icon className="w-4.5 h-4.5" style={{ color: cat.color }} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-white truncate">{exp.description}</p>
-                                        <p className="text-[11px] text-dark-500 mt-0.5">
-                                            {format(new Date(exp.createdAt), 'dd MMM yyyy · h:mm a')}
-                                        </p>
-                                    </div>
-                                    <p className="text-sm font-bold text-white flex-shrink-0">₹{exp.amount.toLocaleString('en-IN')}</p>
-                                </div>
-
-                                {/* Payer & Split Info Row */}
-                                <div className="mt-2.5 pt-2 border-t border-dark-800/40 flex flex-col gap-1 text-[11px] text-dark-400">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                            <span className="text-dark-500">Paid by:</span>
-                                            {exp.paidBy === 'pool' ? (
-                                                <span className="w-4 h-4 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
-                                                    <Coins className="w-2 h-2 text-accent-light" />
-                                                </span>
-                                            ) : getMemberPhoto(exp.paidBy, exp) ? (
-                                                <img src={getMemberPhoto(exp.paidBy, exp)!} alt="" className="w-4 h-4 rounded-full border border-dark-700 object-cover" />
-                                            ) : (
-                                                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payerName)}`} alt="" className="w-4 h-4 rounded-full border border-dark-700" />
-                                            )}
-                                            <span className="font-semibold text-white truncate">{payerName}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                                            <span className="text-dark-500">Split:</span>
-                                            <div className="flex -space-x-1.5 overflow-hidden">
-                                                {exp.usedBy.map((uid) => {
-                                                    const name = getMemberName(uid, exp);
-                                                    const photo = getMemberPhoto(uid, exp);
-                                                    return photo ? (
-                                                        <img key={uid} src={photo} alt={name} title={name} className="inline-block w-4 h-4 rounded-full border border-dark-900 object-cover" />
-                                                    ) : (
-                                                        <img key={uid} src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`} alt={name} title={name} className="inline-block w-4 h-4 rounded-full border border-dark-900" />
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Footer: creator + actions */}
-                                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-dark-800/30">
-                                    <div className="flex items-center gap-1.5">
-                                        {creatorPhoto ? (
-                                            <img src={creatorPhoto} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />
-                                        ) : (
-                                            <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(creatorName)}`} alt="" className="w-3.5 h-3.5 rounded-full" />
-                                        )}
-                                        <span className="text-[10px] text-dark-500">
-                                            Added by: <span className="text-dark-400 font-medium">{creatorName.split(' ')[0]}</span>
-                                        </span>
-                                        {wasEdited && (
-                                            <span className="text-[9px] text-dark-600">
-                                                · edited {formatDistanceToNow(new Date(exp.editedAt!), { addSuffix: true })}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-0.5">
-                                        {exp.location && (
-                                            <a href={`https://www.google.com/maps?q=${exp.location.lat},${exp.location.lng}`}
-                                                target="_blank" rel="noopener noreferrer"
-                                                className="p-1 rounded-lg text-green-500 hover:text-green-400 hover:bg-green-500/10 transition-all"
-                                                title="Open in Google Maps">
-                                                <MapPin className="w-3 h-3" />
-                                            </a>
-                                        )}
-                                        {isEditable && (
-                                            <button onClick={() => openEdit(exp)}
-                                                className="p-1 rounded-lg text-dark-500 hover:text-accent-light hover:bg-accent/10 transition-all">
-                                                <Pencil className="w-3 h-3" />
-                                            </button>
-                                        )}
-                                        {exp.createdBy === user?.uid && (
-                                            <button onClick={() => setDeletingExpense(exp)}
-                                                className="p-1 rounded-lg text-dark-500 hover:text-danger-light hover:bg-danger/10 transition-all">
-                                                <Trash2 className="w-3 h-3" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </motion.div>
-                        );
-                    })}
+                    {filtered.map((exp, i) => (
+                        <ExpenseSwipeRow
+                            key={exp.id}
+                            exp={exp}
+                            index={i}
+                            user={user}
+                            getMemberPhoto={getMemberPhoto}
+                            getMemberName={getMemberName}
+                            canEdit={canEdit}
+                            openEdit={openEdit}
+                            setDeletingExpense={setDeletingExpense}
+                        />
+                    ))}
                 </div>
             )}
 

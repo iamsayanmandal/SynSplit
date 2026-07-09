@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight, ExternalLink, FileText, Shield, Coins, CreditCard, Send, Bell, Download } from 'lucide-react';
+import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight, ExternalLink, FileText, Shield, Coins, CreditCard, Send, Bell, Download, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
@@ -14,11 +14,13 @@ import type { Member, Expense } from '../types';
 import SyncStatusIndicator from '../components/SyncStatusIndicator';
 import { requestPermissionAndSaveToken } from '../lib/messaging';
 import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Profile() {
     const { user } = useAuth();
     const { groups, loading } = useGroups();
     const { activeGroupId, setActiveGroupId } = useActiveGroup();
+    const { theme, setTheme } = useTheme();
 
     const [showCreate, setShowCreate] = useState(false);
 
@@ -753,6 +755,43 @@ export default function Profile() {
                         </div>
                     </>
                 )}
+            </motion.div>
+
+            {/* UI Theme Customizer Card */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+                className="glass-card p-5 mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-4 h-4 text-accent-light" />
+                    <h3 className="text-sm font-bold text-white">App Theme Customizer</h3>
+                </div>
+                <p className="text-[11px] text-dark-400 mb-4 leading-relaxed">
+                    Select a visual theme to dynamically customize your SynSplit interface, background ambient effects, and colors.
+                </p>
+                <div className="grid grid-cols-3 gap-2.5">
+                    {[
+                        { id: 'smoke', name: 'Smoke Effect', bg: 'bg-[#060810]', accent: 'bg-[#6366f1]', desc: 'Gaseous dark glow' },
+                        { id: 'jaguar', name: 'Jaguar Theme', bg: 'bg-[#000000]', accent: 'bg-[#eab308]', desc: 'Stealth black & gold' },
+                        { id: 'pink', name: 'Pink Effect', bg: 'bg-[#180911]', accent: 'bg-[#ec4899]', desc: 'Bubu & Dudu pink' },
+                    ].map((t) => (
+                        <button
+                            key={t.id}
+                            onClick={() => setTheme(t.id as any)}
+                            className={`flex flex-col items-center p-3 rounded-xl border text-center transition-all ${theme === t.id
+                                ? 'border-accent bg-accent/10 text-white' : 'border-glass-border bg-dark-800/30 text-dark-400 hover:bg-dark-800/60'
+                                }`}
+                        >
+                            {/* Visual Preview Swatch */}
+                            <div className={`w-full h-8 rounded-lg ${t.bg} border border-glass-border flex items-center justify-center gap-1.5 mb-2 relative overflow-hidden`}>
+                                <div className={`w-3.5 h-3.5 rounded-full ${t.accent} shadow-sm`} />
+                                {t.id === 'pink' && (
+                                    <span className="absolute bottom-0 right-0 text-[8px] leading-none pr-0.5 pb-0.5">🐱</span>
+                                )}
+                            </div>
+                            <span className="text-[10px] font-bold truncate w-full">{t.name}</span>
+                            <span className="text-[8px] text-dark-500 mt-0.5 truncate w-full">{t.desc}</span>
+                        </button>
+                    ))}
+                </div>
             </motion.div>
 
             {/* Feedback & Suggestions */}
