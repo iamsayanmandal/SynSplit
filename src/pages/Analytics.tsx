@@ -6,7 +6,7 @@ import { useGroups, useExpenses, usePoolContributions } from '../hooks/hooks';
 import { CATEGORY_META } from '../types';
 import type { ExpenseCategory } from '../types';
 import { buildExpenseContext, generatePredictions } from '../lib/gemini';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, subDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, subDays } from 'date-fns';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -432,6 +432,28 @@ export default function Analytics() {
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* Calendar Stats */}
+                                {(() => {
+                                    const calMonthExpenses = expenses.filter(e => isSameMonth(new Date(e.createdAt), calMonth));
+                                    const totalSpentThisMonth = calMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+                                    
+                                    const activeDays = new Set(calMonthExpenses.map(e => format(new Date(e.createdAt), 'yyyy-MM-dd'))).size;
+                                    const avgDailySpend = activeDays > 0 ? totalSpentThisMonth / activeDays : 0;
+
+                                    return (
+                                        <div className="flex gap-2 mb-4">
+                                            <div className="flex-1 p-3 rounded-xl bg-dark-900/60 border border-glass-border">
+                                                <p className="text-[10px] text-dark-400 font-medium uppercase tracking-wider mb-1">Total Spent</p>
+                                                <p className="text-sm font-bold text-white">₹{totalSpentThisMonth.toLocaleString('en-IN')}</p>
+                                            </div>
+                                            <div className="flex-1 p-3 rounded-xl bg-dark-900/60 border border-glass-border">
+                                                <p className="text-[10px] text-dark-400 font-medium uppercase tracking-wider mb-1">Avg Daily Spend</p>
+                                                <p className="text-sm font-bold text-white">₹{avgDailySpend.toLocaleString('en-IN', { maximumFractionDigits: 1 })} <span className="text-[10px] text-dark-500 font-normal lowercase">/ active day</span></p>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Calendar grid */}
                                 <div className="grid grid-cols-7 gap-1 text-center mb-2">

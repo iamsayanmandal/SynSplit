@@ -7,7 +7,7 @@ import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses } from '../hooks/hooks';
 import { deleteExpense, updateExpense, getUserProfile } from '../lib/firestore';
 import { exportGroupExpenses } from '../lib/pdfExport';
-import { CATEGORY_META } from '../types';
+import { CATEGORY_META, getCategoryMeta } from '../types';
 import type { ExpenseCategory, Expense, Member } from '../types';
 import { format, formatDistanceToNow } from 'date-fns';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -221,6 +221,38 @@ export default function Expenses() {
     const [editCategory, setEditCategory] = useState<ExpenseCategory>('food');
     const [editSaving, setEditSaving] = useState(false);
     const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
+
+    // Custom categories
+    const [customCategories, setCustomCategories] = useState<string[]>([]);
+    const [isAddingCustom, setIsAddingCustom] = useState(false);
+    const [newCustomCategory, setNewCustomCategory] = useState('');
+
+    useEffect(() => {
+        if (user) {
+            const saved = localStorage.getItem(`synsplit_custom_categories_${user.uid}`);
+            if (saved) {
+                try {
+                    setCustomCategories(JSON.parse(saved));
+                } catch (e) {
+                    console.error('Failed to parse custom categories');
+                }
+            }
+        }
+    }, [user]);
+
+    const handleAddCustomCategory = () => {
+        if (newCustomCategory.trim() && user) {
+            const cat = newCustomCategory.trim().toLowerCase();
+            if (!customCategories.includes(cat) && !(cat in CATEGORY_META)) {
+                const updated = [...customCategories, cat];
+                setCustomCategories(updated);
+                localStorage.setItem(`synsplit_custom_categories_${user.uid}`, JSON.stringify(updated));
+            }
+            setEditCategory(cat);
+            setNewCustomCategory('');
+            setIsAddingCustom(false);
+        }
+    };
 
     // Resolved users for removed members
     const [resolvedUsers, setResolvedUsers] = useState<Record<string, Partial<Member>>>({});
@@ -439,7 +471,7 @@ export default function Expenses() {
         setDeletingExpense(null);
     };
 
-    const categories = Object.entries(CATEGORY_META) as [ExpenseCategory, typeof CATEGORY_META[ExpenseCategory]][];
+    const allCategoryKeys = [...Object.keys(CATEGORY_META), ...customCategories];
 
     // Total for this group
     const total = expenses.reduce((s, e) => s + e.amount, 0);
@@ -707,15 +739,44 @@ export default function Expenses() {
                                 <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
                                     placeholder="Description (optional)" className="input-dark text-sm" />
                                 <div className="grid grid-cols-3 gap-1.5">
-                                    {categories.map(([key, meta]) => (
-                                        <button key={key} onClick={() => setEditCategory(key)}
-                                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all ${editCategory === key
-                                                ? 'border-accent bg-accent/10 text-white' : 'border-transparent bg-dark-800/50 text-dark-400'
-                                                }`}>
-                                            <meta.icon className="w-4 h-4" style={{ color: meta.color }} />
-                                            <span className="text-[11px] font-medium truncate">{meta.label}</span>
+                                    {allCategoryKeys.map((key) => {
+                                        const meta = getCategoryMeta(key);
+                                        return (
+                                            <button key={key} onClick={() => setEditCategory(key)}
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all ${editCategory === key
+                                                    ? 'border-accent bg-accent/10 text-white' : 'border-transparent bg-dark-800/50 text-dark-400'
+                                                    }`}>
+                                                <meta.icon className="w-4 h-4 shrink-0" style={{ color: meta.color }} />
+                                                <span className="text-[11px] font-medium truncate">{meta.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                    
+                                    {isAddingCustom ? (
+                                        <div className="col-span-3 sm:col-span-1 px-3 py-2 rounded-xl border border-accent bg-accent/10 flex flex-col justify-center items-center gap-1.5">
+                                            <input 
+                                                type="text"
+                                                value={newCustomCategory}
+                                                onChange={(e) => setNewCustomCategory(e.target.value)}
+                                                placeholder="Category..."
+                                                className="w-full bg-transparent text-[11px] text-center text-white placeholder-dark-400 outline-none"
+                                                autoFocus
+                                                onKeyDown={(e) => e.key === 'Enter' && handleAddCustomCategory()}
+                                            />
+                                            <div className="flex gap-1 w-full justify-center">
+                                                <button onClick={handleAddCustomCategory} className="p-0.5 rounded-md bg-accent text-white"><Check className="w-3 h-3" /></button>
+                                                <button onClick={() => setIsAddingCustom(false)} className="p-0.5 rounded-md bg-dark-700 text-dark-300"><X className="w-3 h-3" /></button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setIsAddingCustom(true)}
+                                            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-transparent bg-dark-800/50 hover:border-dark-600 text-dark-400 transition-all"
+                                        >
+                                            <Plus className="w-4 h-4 shrink-0" />
+                                            <span className="text-[11px] font-medium truncate">Custom</span>
                                         </button>
-                                    ))}
+                                    )}
                                 </div>
                                 {/* Location — read only */}
                                 {editingExpense?.location && (

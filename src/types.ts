@@ -11,11 +11,21 @@ export type ExpenseCategory =
     | 'groceries'
     | 'entertainment'
     | 'utilities'
-    | 'others';
+    | 'room_rent'
+    | 'breakfast'
+    | 'lunch'
+    | 'dinner'
+    | 'tea'
+    | 'snack'
+    | 'auto'
+    | 'car_rent'
+    | 'cab'
+    | 'others'
+    | (string & {});
 
-import { Pizza, Home, Fuel, Wifi, Plane, ShoppingCart, Film, Lightbulb, Package } from 'lucide-react';
+import { Pizza, Home, Fuel, Wifi, Plane, ShoppingCart, Film, Lightbulb, Package, Coffee, Utensils, Car, Tag } from 'lucide-react';
 
-export const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: React.ComponentType<any>; color: string }> = {
+export const CATEGORY_META: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
     food: { label: 'Food', icon: Pizza, color: '#f97316' },
     rent: { label: 'Rent', icon: Home, color: '#6366f1' },
     gas: { label: 'Gas', icon: Fuel, color: '#eab308' },
@@ -24,8 +34,22 @@ export const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: React
     groceries: { label: 'Groceries', icon: ShoppingCart, color: '#10b981' },
     entertainment: { label: 'Entertainment', icon: Film, color: '#ec4899' },
     utilities: { label: 'Utilities', icon: Lightbulb, color: '#14b8a6' },
+    room_rent: { label: 'Room Rent', icon: Home, color: '#818cf8' },
+    breakfast: { label: 'Breakfast', icon: Coffee, color: '#fb923c' },
+    lunch: { label: 'Lunch', icon: Utensils, color: '#ef4444' },
+    dinner: { label: 'Dinner', icon: Utensils, color: '#be123c' },
+    tea: { label: 'Tea', icon: Coffee, color: '#d97706' },
+    snack: { label: 'Snack', icon: Pizza, color: '#f59e0b' },
+    auto: { label: 'Auto', icon: Car, color: '#10b981' },
+    car_rent: { label: 'Car Rent', icon: Car, color: '#059669' },
+    cab: { label: 'CAB', icon: Car, color: '#34d399' },
     others: { label: 'Others', icon: Package, color: '#64748b' },
 };
+
+export function getCategoryMeta(cat: string) {
+    if (cat in CATEGORY_META) return CATEGORY_META[cat];
+    return { label: cat, icon: Tag, color: '#94a3b8' };
+}
 
 // ─── Core Interfaces ───
 

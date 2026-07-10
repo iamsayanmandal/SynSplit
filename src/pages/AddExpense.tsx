@@ -1,14 +1,14 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check, Mic, MicOff, MapPin, X, Coins } from 'lucide-react';
+import { ArrowLeft, Check, Mic, MicOff, MapPin, X, Coins, Plus } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
 import { addExpense } from '../lib/firestore';
 import { parseVoiceExpense } from '../lib/gemini';
 import { sanitizeInput } from '../lib/splitCalculator';
-import { CATEGORY_META } from '../types';
+import { CATEGORY_META, getCategoryMeta } from '../types';
 import type { ExpenseCategory, SplitType, ExpenseMode } from '../types';
 
 export default function AddExpense() {
@@ -28,6 +28,38 @@ export default function AddExpense() {
     // Voice input state
     const [isListening, setIsListening] = useState(false);
     const [voiceParsing, setVoiceParsing] = useState(false);
+
+    // Custom categories
+    const [customCategories, setCustomCategories] = useState<string[]>([]);
+    const [isAddingCustom, setIsAddingCustom] = useState(false);
+    const [newCustomCategory, setNewCustomCategory] = useState('');
+
+    useEffect(() => {
+        if (user) {
+            const saved = localStorage.getItem(`synsplit_custom_categories_${user.uid}`);
+            if (saved) {
+                try {
+                    setCustomCategories(JSON.parse(saved));
+                } catch (e) {
+                    console.error('Failed to parse custom categories');
+                }
+            }
+        }
+    }, [user]);
+
+    const handleAddCustomCategory = () => {
+        if (newCustomCategory.trim() && user) {
+            const cat = newCustomCategory.trim().toLowerCase();
+            if (!customCategories.includes(cat) && !(cat in CATEGORY_META)) {
+                const updated = [...customCategories, cat];
+                setCustomCategories(updated);
+                localStorage.setItem(`synsplit_custom_categories_${user.uid}`, JSON.stringify(updated));
+            }
+            setCategory(cat);
+            setNewCustomCategory('');
+            setIsAddingCustom(false);
+        }
+    };
 
     // Location state
     const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -170,7 +202,7 @@ export default function AddExpense() {
     };
 
     const canSubmit = parseFloat(amount) > 0 && groupId && usedBy.length > 0;
-    const categories = Object.entries(CATEGORY_META) as [ExpenseCategory, typeof CATEGORY_META[ExpenseCategory]][];
+    const allCategoryKeys = [...Object.keys(CATEGORY_META), ...customCategories];
 
     // Pool mode restriction: only admin can add unless allowMemberExpenses is on
     const isAdmin = selectedGroup?.createdBy === user?.uid;
@@ -284,19 +316,50 @@ export default function AddExpense() {
 
                             {/* Category Grid */}
                             <div className="grid grid-cols-4 gap-1.5">
-                                {categories.map(([key, meta]) => (
+                                {allCategoryKeys.map((key) => {
+                                    const meta = getCategoryMeta(key);
+                                    return (
+                                        <button
+                                            key={key}
+                                            onClick={() => setCategory(key)}
+                                            className={`p-2.5 rounded-xl border transition-all duration-200 flex flex-col items-center justify-center text-center ${category === key
+                                                ? 'border-accent bg-accent/10'
+                                                : 'border-transparent bg-dark-800/50 hover:border-dark-600'
+                                                }`}
+                                        >
+                                            <meta.icon className="w-5 h-5 block" style={{ color: meta.color }} />
+                                            <span className="text-[10px] font-medium text-dark-300 leading-tight block mt-1.5">{meta.label}</span>
+                                        </button>
+                                    );
+                                })}
+
+                                {isAddingCustom ? (
+                                    <div className="col-span-2 sm:col-span-1 p-2.5 rounded-xl border border-accent bg-accent/10 flex flex-col justify-center items-center gap-2">
+                                        <input 
+                                            type="text"
+                                            value={newCustomCategory}
+                                            onChange={(e) => setNewCustomCategory(e.target.value)}
+                                            placeholder="Category..."
+                                            className="w-full bg-transparent text-xs text-center text-white placeholder-dark-400 outline-none"
+                                            autoFocus
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddCustomCategory()}
+                                        />
+                                        <div className="flex gap-1 w-full justify-center">
+                                            <button onClick={handleAddCustomCategory} className="p-1 rounded-md bg-accent text-white"><Check className="w-3 h-3" /></button>
+                                            <button onClick={() => setIsAddingCustom(false)} className="p-1 rounded-md bg-dark-700 text-dark-300"><X className="w-3 h-3" /></button>
+                                        </div>
+                                    </div>
+                                ) : (
                                     <button
-                                        key={key}
-                                        onClick={() => setCategory(key)}
-                                        className={`p-2.5 rounded-xl border transition-all duration-200 flex flex-col items-center justify-center text-center ${category === key
-                                            ? 'border-accent bg-accent/10'
-                                            : 'border-transparent bg-dark-800/50 hover:border-dark-600'
-                                            }`}
+                                        onClick={() => setIsAddingCustom(true)}
+                                        className="p-2.5 rounded-xl border border-transparent bg-dark-800/50 hover:border-dark-600 transition-all duration-200 flex flex-col items-center justify-center text-center"
                                     >
-                                        <meta.icon className="w-5 h-5 block" style={{ color: meta.color }} />
-                                        <span className="text-[10px] font-medium text-dark-300 leading-tight block mt-1.5">{meta.label}</span>
+                                        <div className="w-5 h-5 rounded-full bg-dark-700 flex items-center justify-center mb-1.5">
+                                            <Plus className="w-3 h-3 text-dark-300" />
+                                        </div>
+                                        <span className="text-[10px] font-medium text-dark-300 leading-tight block">Custom</span>
                                     </button>
-                                ))}
+                                )}
                             </div>
                         </div>
 
