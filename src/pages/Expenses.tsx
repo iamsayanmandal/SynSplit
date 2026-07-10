@@ -8,6 +8,7 @@ import { useGroups, useExpenses } from '../hooks/hooks';
 import { deleteExpense, updateExpense, getUserProfile } from '../lib/firestore';
 import { exportGroupExpenses } from '../lib/pdfExport';
 import { CATEGORY_META, getCategoryMeta } from '../types';
+import { trackCategoryUsage, sortCategoriesByUsage } from '../lib/categoryUtils';
 import type { ExpenseCategory, Expense, Member } from '../types';
 import { format, formatDistanceToNow } from 'date-fns';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -457,6 +458,10 @@ export default function Expenses() {
                 description: editDesc.trim(),
                 category: editCategory,
             }, user.uid);
+            
+            // Track category usage
+            trackCategoryUsage(user.uid, editCategory);
+            
             setEditingExpense(null);
         } catch (err) {
             console.error('Edit failed:', err);
@@ -471,7 +476,8 @@ export default function Expenses() {
         setDeletingExpense(null);
     };
 
-    const allCategoryKeys = [...Object.keys(CATEGORY_META), ...customCategories];
+    const baseCategoryKeys = [...Object.keys(CATEGORY_META), ...customCategories];
+    const allCategoryKeys = sortCategoriesByUsage(user?.uid, baseCategoryKeys);
 
     // Total for this group
     const total = expenses.reduce((s, e) => s + e.amount, 0);

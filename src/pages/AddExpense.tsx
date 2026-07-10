@@ -9,6 +9,7 @@ import { addExpense } from '../lib/firestore';
 import { parseVoiceExpense } from '../lib/gemini';
 import { sanitizeInput } from '../lib/splitCalculator';
 import { CATEGORY_META, getCategoryMeta } from '../types';
+import { trackCategoryUsage, sortCategoriesByUsage } from '../lib/categoryUtils';
 import type { ExpenseCategory, SplitType, ExpenseMode } from '../types';
 
 export default function AddExpense() {
@@ -193,6 +194,9 @@ export default function AddExpense() {
                 }
             }
 
+            // Track category usage for smart sorting
+            trackCategoryUsage(user.uid, category);
+
             navigate('/');
         } catch (err) {
             console.error('Failed to add expense:', err);
@@ -202,7 +206,9 @@ export default function AddExpense() {
     };
 
     const canSubmit = parseFloat(amount) > 0 && groupId && usedBy.length > 0;
-    const allCategoryKeys = [...Object.keys(CATEGORY_META), ...customCategories];
+    
+    const baseCategoryKeys = [...Object.keys(CATEGORY_META), ...customCategories];
+    const allCategoryKeys = sortCategoriesByUsage(user?.uid, baseCategoryKeys);
 
     // Pool mode restriction: only admin can add unless allowMemberExpenses is on
     const isAdmin = selectedGroup?.createdBy === user?.uid;
