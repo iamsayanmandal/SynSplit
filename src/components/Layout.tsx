@@ -3,6 +3,7 @@ import { Home, Receipt, ArrowLeftRight, BarChart3, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SynBot from './SynBot';
 import ThemeBackground from './ThemeBackground';
+import PwaInstallBanner from './PwaInstallBanner';
 
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
@@ -19,6 +20,7 @@ export default function Layout() {
         <div className="min-h-screen min-h-[100dvh] bg-dark-950 flex flex-col relative">
             {/* Theme Backdrop Visuals */}
             <ThemeBackground />
+            <PwaInstallBanner />
 
             <main className="flex-1 pb-20 overflow-y-auto relative z-10">
                 <AnimatePresence mode="wait" initial={false}>

@@ -3,6 +3,8 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
   User
 } from 'firebase/auth';
 import { auth, googleProvider, db } from '../firebase';
@@ -30,11 +32,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      setLoading(false);
+    let unsubscribe = () => {};
 
-      if (user) {
+    const initAuth = async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch (error) {
+        console.error("Auth persistence error:", error);
+      }
+
+      unsubscribe = onAuthStateChanged(auth, async (user) => {
+        setUser(user);
+        setLoading(false);
+
+        if (user) {
         // Sync user profile to Firestore for searching by email
         try {
           const userRef = doc(db, 'users', user.uid);
@@ -51,8 +62,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     });
+    };
 
-    return unsubscribe;
+    initAuth();
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const signInWithGoogle = async () => {
