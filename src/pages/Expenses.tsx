@@ -321,7 +321,7 @@ export default function Expenses() {
         // 1. Text Search
         if (search.trim()) {
             const matchesDesc = e.description.toLowerCase().includes(search.toLowerCase());
-            const matchesCat = CATEGORY_META[e.category as ExpenseCategory]?.label.toLowerCase().includes(search.toLowerCase());
+            const matchesCat = getCategoryMeta(e.category).label.toLowerCase().includes(search.toLowerCase());
             if (!matchesDesc && !matchesCat) return false;
         }
 

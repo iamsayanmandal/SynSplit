@@ -163,7 +163,7 @@ export default function AddExpense() {
         setLoading(true);
         try {
             const mode: ExpenseMode = selectedGroup?.mode || 'direct';
-            const sanitizedDescription = sanitizeInput(description) || CATEGORY_META[category].label;
+            const sanitizedDescription = sanitizeInput(description) || getCategoryMeta(category).label;
             
             const expensePromise = addExpense({
                 groupId,
