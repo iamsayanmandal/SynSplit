@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check, Mic, MicOff, MapPin, X, Coins, Plus } from 'lucide-react';
+import { ArrowLeft, Check, Mic, MicOff, MapPin, X, Coins, Plus, ChevronDown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
@@ -31,6 +31,7 @@ export default function AddExpense() {
     const [voiceParsing, setVoiceParsing] = useState(false);
 
     // Custom categories
+    const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
     const [customCategories, setCustomCategories] = useState<string[]>([]);
     const [isAddingCustom, setIsAddingCustom] = useState(false);
     const [newCustomCategory, setNewCustomCategory] = useState('');
@@ -322,7 +323,7 @@ export default function AddExpense() {
 
                             {/* Category Grid */}
                             <div className="grid grid-cols-4 gap-1.5">
-                                {allCategoryKeys.map((key) => {
+                                {allCategoryKeys.slice(0, isCategoriesExpanded ? undefined : 7).map((key) => {
                                     const meta = getCategoryMeta(key);
                                     return (
                                         <button
@@ -339,7 +340,19 @@ export default function AddExpense() {
                                     );
                                 })}
 
-                                {isAddingCustom ? (
+                                {!isCategoriesExpanded && allCategoryKeys.length > 7 && (
+                                    <button
+                                        onClick={() => setIsCategoriesExpanded(true)}
+                                        className="p-2.5 rounded-xl border border-transparent bg-dark-800/50 hover:border-dark-600 transition-all duration-200 flex flex-col items-center justify-center text-center"
+                                    >
+                                        <div className="w-5 h-5 rounded-full bg-dark-700 flex items-center justify-center mb-1.5">
+                                            <ChevronDown className="w-3 h-3 text-dark-300" />
+                                        </div>
+                                        <span className="text-[10px] font-medium text-dark-300 leading-tight block">More</span>
+                                    </button>
+                                )}
+
+                                {isCategoriesExpanded && (isAddingCustom ? (
                                     <div className="col-span-2 sm:col-span-1 p-2.5 rounded-xl border border-accent bg-accent/10 flex flex-col justify-center items-center gap-2">
                                         <input 
                                             type="text"
@@ -365,7 +378,7 @@ export default function AddExpense() {
                                         </div>
                                         <span className="text-[10px] font-medium text-dark-300 leading-tight block">Custom</span>
                                     </button>
-                                )}
+                                ))}
                             </div>
                         </div>
 
@@ -423,7 +436,13 @@ export default function AddExpense() {
                                                     : 'bg-dark-800 text-dark-400 hover:bg-dark-700'
                                                     }`}
                                             >
-                                                {usedBy.includes(m.uid) && <Check className="w-3 h-3" />}
+                                                {usedBy.includes(m.uid) ? <Check className="w-3 h-3" /> : (
+                                                    m.photoURL ? (
+                                                        <img src={m.photoURL} alt="" className="w-4 h-4 rounded-full" />
+                                                    ) : (
+                                                        <span className="w-4 h-4 rounded-full bg-dark-600 flex items-center justify-center text-[9px] text-white">{m.name.charAt(0)}</span>
+                                                    )
+                                                )}
                                                 {m.name.split(' ')[0]}
                                             </button>
                                         ))}

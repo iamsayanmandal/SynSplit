@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight, ExternalLink, FileText, Shield, Coins, CreditCard, Send, Bell, Download, Sparkles } from 'lucide-react';
+import { LogOut, Plus, UserPlus, ChevronDown, ChevronUp, Trash2, Crown, X, Wallet, Pencil, Check, ToggleLeft, ToggleRight, ExternalLink, FileText, Shield, Coins, CreditCard, Send, Bell, Download, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups } from '../hooks/hooks';
@@ -15,6 +15,39 @@ import SyncStatusIndicator from '../components/SyncStatusIndicator';
 import { requestPermissionAndSaveToken } from '../lib/messaging';
 import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { useTheme } from '../contexts/ThemeContext';
+
+const AccordionSection = ({ title, icon: Icon, children, count, defaultExpanded = false, headerAction }: any) => {
+    const [expanded, setExpanded] = useState(defaultExpanded);
+    return (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card mb-4 overflow-hidden border border-glass-border">
+            <div className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+                <button 
+                    onClick={() => setExpanded(!expanded)} 
+                    className="flex-1 flex items-center gap-2 text-left outline-none"
+                >
+                    <Icon className="w-4 h-4 text-accent-light" />
+                    <h3 className="text-sm font-bold text-white flex-1">
+                        {title} {count !== undefined && <span className="text-dark-400 font-normal">({count})</span>}
+                    </h3>
+                    <ChevronDown className={`w-4 h-4 text-dark-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                </button>
+                {headerAction && <div className="ml-3 pl-3 border-l border-dark-800/50">{headerAction}</div>}
+            </div>
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden border-t border-dark-800/50"
+                    >
+                        <div className="p-4">{children}</div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
+    );
+};
 
 export default function Profile() {
     const { user } = useAuth();
@@ -455,14 +488,18 @@ export default function Profile() {
             )}
 
             {/* Your Groups */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }}>
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-white">Your Groups ({groups.length})</h3>
-                    <button onClick={() => setShowCreate(true)}
+            <AccordionSection 
+                title="Your Groups" 
+                icon={Users} 
+                count={groups.length} 
+                defaultExpanded={true}
+                headerAction={
+                    <button onClick={(e) => { e.stopPropagation(); setShowCreate(true); }}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gradient-to-r from-accent to-purple-600 text-white text-xs font-medium shadow-neon">
                         <Plus className="w-3.5 h-3.5" /> New Group
                     </button>
-                </div>
+                }
+            >
 
                 {loading ? (
                     <div className="space-y-2">
@@ -632,16 +669,11 @@ export default function Profile() {
                         })}
                     </div>
                 )}
-            </motion.div>
+            </AccordionSection>
 
             {/* Telegram Integration Card */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-                className="glass-card p-5 mt-4">
+            <AccordionSection title="Telegram Notifications" icon={Send} defaultExpanded={false}>
                 <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                        <Send className="w-4 h-4 text-accent-light" />
-                        <h3 className="text-sm font-bold text-white">Telegram Notifications</h3>
-                    </div>
                     {isTelegramMinimized && telegramChatId && (
                         <button
                             onClick={() => setIsTelegramMinimized(false)}
@@ -755,15 +787,10 @@ export default function Profile() {
                         </div>
                     </>
                 )}
-            </motion.div>
+            </AccordionSection>
 
             {/* UI Theme Customizer Card */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-                className="glass-card p-5 mt-4">
-                <div className="flex items-center gap-2 mb-3">
-                    <Sparkles className="w-4 h-4 text-accent-light" />
-                    <h3 className="text-sm font-bold text-white">App Theme Customizer</h3>
-                </div>
+            <AccordionSection title="App Theme Customizer" icon={Sparkles} defaultExpanded={false}>
                 <p className="text-[11px] text-dark-400 mb-4 leading-relaxed">
                     Select a visual theme to dynamically customize your SynSplit interface, background ambient effects, and colors.
                 </p>
@@ -792,7 +819,7 @@ export default function Profile() {
                         </button>
                     ))}
                 </div>
-            </motion.div>
+            </AccordionSection>
 
             {/* Feedback & Suggestions */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="mt-4">

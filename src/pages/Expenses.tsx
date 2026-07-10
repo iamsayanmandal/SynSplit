@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useAnimation, useMotionValue } from 'framer-motion';
-import { Trash2, Plus, Download, Search, MapPin, Pencil, Check, FileText, Coins } from 'lucide-react';
+import { Trash2, Plus, Download, Search, MapPin, Pencil, Check, FileText, Coins, ChevronDown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useActiveGroup } from '../contexts/ActiveGroupContext';
 import { useGroups, useExpenses } from '../hooks/hooks';
@@ -225,6 +225,7 @@ export default function Expenses() {
 
     // Custom categories
     const [customCategories, setCustomCategories] = useState<string[]>([]);
+    const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
     const [isAddingCustom, setIsAddingCustom] = useState(false);
     const [newCustomCategory, setNewCustomCategory] = useState('');
 
@@ -463,6 +464,7 @@ export default function Expenses() {
             trackCategoryUsage(user.uid, editCategory);
             
             setEditingExpense(null);
+            setIsCategoriesExpanded(false); // Reset expansion state
         } catch (err) {
             console.error('Edit failed:', err);
         } finally {
@@ -745,7 +747,7 @@ export default function Expenses() {
                                 <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
                                     placeholder="Description (optional)" className="input-dark text-sm" />
                                 <div className="grid grid-cols-3 gap-1.5">
-                                    {allCategoryKeys.map((key) => {
+                                    {allCategoryKeys.slice(0, isCategoriesExpanded ? undefined : 8).map((key) => {
                                         const meta = getCategoryMeta(key);
                                         return (
                                             <button key={key} onClick={() => setEditCategory(key)}
@@ -757,8 +759,18 @@ export default function Expenses() {
                                             </button>
                                         );
                                     })}
+
+                                    {!isCategoriesExpanded && allCategoryKeys.length > 8 && (
+                                        <button
+                                            onClick={() => setIsCategoriesExpanded(true)}
+                                            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-transparent bg-dark-800/50 text-dark-400 hover:border-dark-600 transition-all justify-center"
+                                        >
+                                            <ChevronDown className="w-4 h-4 shrink-0" />
+                                            <span className="text-[11px] font-medium truncate">More</span>
+                                        </button>
+                                    )}
                                     
-                                    {isAddingCustom ? (
+                                    {isCategoriesExpanded && (isAddingCustom ? (
                                         <div className="col-span-3 sm:col-span-1 px-3 py-2 rounded-xl border border-accent bg-accent/10 flex flex-col justify-center items-center gap-1.5">
                                             <input 
                                                 type="text"
@@ -782,7 +794,7 @@ export default function Expenses() {
                                             <Plus className="w-4 h-4 shrink-0" />
                                             <span className="text-[11px] font-medium truncate">Custom</span>
                                         </button>
-                                    )}
+                                    ))}
                                 </div>
                                 {/* Location — read only */}
                                 {editingExpense?.location && (
