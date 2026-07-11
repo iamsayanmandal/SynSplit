@@ -13,7 +13,7 @@ import type { ExpenseCategory, Expense, Member } from '../types';
 import { format, formatDistanceToNow } from 'date-fns';
 import ConfirmDialog from '../components/ConfirmDialog';
 
-const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1000;
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -62,7 +62,7 @@ function ExpenseSwipeRow({
     const x = useMotionValue(0);
 
     const isEditable = canEdit(exp);
-    const isDeletable = exp.createdBy === user?.uid;
+    const isDeletable = canEdit(exp);
     const wasEdited = !!exp.editedAt;
     const cat = CATEGORY_META[exp.category as ExpenseCategory] || CATEGORY_META.others;
     const creatorPhoto = getMemberPhoto(exp.createdBy, exp);
@@ -193,7 +193,7 @@ function ExpenseSwipeRow({
                                 <Pencil className="w-3 h-3" />
                             </button>
                         )}
-                        {exp.createdBy === user?.uid && (
+                        {isDeletable && (
                             <button onClick={(e) => { e.stopPropagation(); setDeletingExpense(exp); }}
                                 className="p-1 rounded-lg text-dark-500 hover:text-danger-light hover:bg-danger/10 transition-all sm:flex hidden">
                                 <Trash2 className="w-3 h-3" />
@@ -440,7 +440,7 @@ export default function Expenses() {
     };
 
     const canEdit = (exp: Expense) => {
-        return exp.createdBy === user?.uid && (Date.now() - exp.createdAt) < FORTY_EIGHT_HOURS;
+        return exp.createdBy === user?.uid && (Date.now() - exp.createdAt) < TWENTY_FOUR_HOURS;
     };
 
     const openEdit = (exp: Expense) => {
